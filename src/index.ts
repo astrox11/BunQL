@@ -43,7 +43,6 @@ export type {
   ColumnDefinition,
   ColumnType,
   InferSchemaType,
-  InsertData,
   OrderBy,
   OrderDirection,
   QueryOptions,

@@ -67,13 +67,6 @@ export interface QueryOptions<T> {
   offset?: number;
 }
 
-/** Insert data type - allows omitting auto-increment primary keys */
-export type InsertData<T extends SchemaDefinition> = {
-  [K in keyof T as T[K]["autoIncrement"] extends true ? never : T[K]["primary"] extends true ? (T[K]["autoIncrement"] extends true ? never : K) : K]?: InferColumnType<T[K]>;
-} & {
-  [K in keyof T as T[K]["notNull"] extends true ? (T[K]["autoIncrement"] extends true ? never : T[K]["default"] extends undefined ? K : never) : never]: InferColumnType<T[K]>;
-};
-
 /** Update data type */
 export type UpdateData<T> = Partial<T>;
 

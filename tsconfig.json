@@ -14,10 +14,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
     "types": ["bun-types"]
   },
   "include": ["src/**/*", "tests/**/*"]
