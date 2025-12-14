@@ -137,3 +137,12 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Lock files
+package-lock.json
+bun.lockb
+
+# SQLite database files
+*.sqlite
+*.sqlite3
+*.db
