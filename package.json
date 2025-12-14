@@ -1,0 +1,36 @@
+{
+  "name": "bunql",
+  "version": "1.0.0",
+  "description": "A minimal high performance ORM for Bun using bun:sqlite",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "bun",
+    "sqlite",
+    "orm",
+    "database",
+    "sql"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "^1.3.4",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "bun": ">=1.0.0"
+  }
+}
