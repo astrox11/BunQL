@@ -1,0 +1,80 @@
+name: Bun Auto Publish
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get previous version
+        id: previous
+        run: |
+          git checkout HEAD~1 -- package.json || true
+          PREV=$(node -p "require('./package.json').version" || echo "none")
+          git checkout -- package.json
+          echo "version=$PREV" >> $GITHUB_OUTPUT
+
+      - name: Check version changed
+        id: changed
+        run: |
+          if [ "${{ steps.current.outputs.version }}" = "${{ steps.previous.outputs.version }}" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop if version unchanged
+        if: steps.changed.outputs.changed == 'false'
+        run: echo "Version unchanged, skipping publish"
+
+      - name: Decide npm tag
+        if: steps.changed.outputs.changed == 'true'
+        id: tag
+        run: |
+          V="${{ steps.current.outputs.version }}"
+          if [[ "$V" =~ ^0\.0\.[0-9]+$ ]]; then
+            echo "tag=nightly" >> $GITHUB_OUTPUT
+          elif [[ "$V" =~ ^0\.[1-9][0-9]*\.0$ ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup npm auth
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        if: steps.changed.outputs.changed == 'true'
+        run: bun publish --tag ${{ steps.tag.outputs.tag }}
+
+      - name: Nightly changelog
+        if: steps.tag.outputs.tag == 'nightly'
+        run: |
+          echo "## Nightly changes"
+          git log HEAD~10..HEAD --pretty=format:"- %s"
