@@ -10,6 +10,9 @@ A minimal high performance ORM for Bun using bun:sqlite. Thin and SQL first with
 - 🎯 **SQL First** - Predictable, debuggable SQL generation
 - 💾 **Transaction Support** - Automatic and manual transaction control
 - ⚡ **Auto Table Creation** - Tables created automatically from schema definitions
+- 🔍 **Advanced Queries** - Comparison operators, IN, BETWEEN, LIKE, and more
+- 📊 **Aggregations** - SUM, AVG, MIN, MAX, COUNT with optional grouping
+- 🔄 **Upsert Support** - INSERT OR REPLACE and ON CONFLICT handling
 
 ## Installation
 
@@ -101,7 +104,8 @@ User.find({ status: "active" })
   .run();      // Alias for all()
 
 // Find by ID
-User.findById(1);  // Returns T | null
+User.findById(1);        // Returns T | null
+User.findByIdOrFail(1);  // Returns T, throws if not found
 
 // Get all records
 User.all();  // Returns T[]
@@ -109,6 +113,37 @@ User.all();  // Returns T[]
 // Count records
 User.count();                      // Count all
 User.count({ status: "active" });  // Count with filter
+
+// Check existence
+User.exists();                     // Check if any records exist
+User.exists({ email: "a@b.com" }); // Check with filter
+
+// Get single column values
+User.pluck("email");               // Returns string[]
+User.distinct("role");             // Returns unique values
+```
+
+#### Aggregate Methods
+
+```typescript
+// Sum of a column
+User.sum("balance");                      // Sum all
+User.sum("balance", { status: "active" }); // Sum with filter
+
+// Average of a column
+User.avg("age");
+
+// Minimum value
+User.min("created_at");
+
+// Maximum value  
+User.max("score");
+
+// Increment/Decrement
+User.increment("login_count");            // Increment by 1
+User.increment("points", 10);             // Increment by 10
+User.increment("points", 5, { id: 1 });   // Increment with filter
+User.decrement("credits", 25);            // Decrement by 25
 ```
 
 #### Mutation Methods
@@ -122,9 +157,21 @@ User.insertMany([{ email: "a@example.com" }, { email: "b@example.com" }]);  // R
 User.update({ email: "old@example.com" }, { email: "new@example.com" });  // Returns affected count
 User.updateById(1, { email: "new@example.com" });  // Returns boolean
 
+// Upsert (Insert or Replace)
+User.upsert({ id: 1, email: "test@example.com", name: "Test" });  // INSERT OR REPLACE
+
+// Upsert with conflict handling
+User.upsertOn(
+  { email: "test@example.com", name: "New Name" },
+  ["email"],  // Conflict columns
+);
+
 // Delete
 User.delete({ email: "test@example.com" });  // Returns affected count
 User.deleteById(1);  // Returns boolean
+
+// Truncate (delete all and reset autoincrement)
+User.truncate();
 ```
 
 ### QueryBuilder Class
@@ -133,12 +180,78 @@ The QueryBuilder provides a fluent API for constructing queries. Queries are onl
 
 ```typescript
 User.find({ status: "active" })
-  .where({ role: "admin" })      // Add WHERE conditions
+  .where({ role: "admin" })      // Add WHERE conditions (AND)
+  .orWhere({ role: "superuser" }) // Add OR conditions
   .orderBy("name", "ASC")        // Add ORDER BY
   .limit(10)                     // Set LIMIT
   .offset(20)                    // Set OFFSET
   .select("id", "name", "email") // Select specific columns
+  .distinct()                    // Select DISTINCT rows
+  .groupBy("department")         // Group results
+  .having({ count: { $gt: 5 } }) // Filter groups
   .toSQL();                      // Get { sql, params } for debugging
+```
+
+#### Execution Methods
+
+```typescript
+.all()          // Returns T[] - all matching records
+.first()        // Returns T | null - first matching record
+.firstOrFail()  // Returns T - throws if no record found
+.run()          // Alias for .all()
+.exists()       // Returns boolean - check if any records match
+.count()        // Returns number - count matching records
+.sum("column")  // Returns number - sum of column
+.avg("column")  // Returns number - average of column
+.min("column")  // Returns number - minimum value
+.max("column")  // Returns number - maximum value
+.pluck("column") // Returns T[K][] - array of column values
+```
+
+### Advanced WHERE Operators
+
+BunQL supports advanced comparison operators for flexible queries:
+
+```typescript
+// Greater than
+User.find({ age: { $gt: 18 } });
+
+// Greater than or equal
+User.find({ age: { $gte: 21 } });
+
+// Less than
+User.find({ price: { $lt: 100 } });
+
+// Less than or equal
+User.find({ price: { $lte: 50 } });
+
+// Not equal
+User.find({ status: { $ne: "deleted" } });
+
+// LIKE pattern matching
+User.find({ email: { $like: "%@gmail.com" } });
+
+// NOT LIKE
+User.find({ name: { $notLike: "Admin%" } });
+
+// IN array
+User.find({ role: { $in: ["admin", "moderator"] } });
+
+// NOT IN array
+User.find({ status: { $notIn: ["banned", "suspended"] } });
+
+// BETWEEN range
+User.find({ price: { $between: [10, 100] } });
+
+// IS NULL / IS NOT NULL
+User.find({ deleted_at: { $isNull: true } });
+User.find({ email: { $isNull: false } });
+
+// Combine multiple operators
+User.find({ 
+  age: { $gte: 18, $lt: 65 },
+  status: { $ne: "inactive" }
+});
 ```
 
 ### Schema Definition

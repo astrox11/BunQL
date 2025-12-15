@@ -47,8 +47,48 @@ export interface BunQLConfig {
   create?: boolean;
 }
 
-/** Where clause conditions */
-export type WhereCondition<T> = Partial<T>;
+/** Comparison operators for WHERE clauses */
+export type ComparisonOperator = "=" | "!=" | "<>" | ">" | "<" | ">=" | "<=" | "LIKE" | "NOT LIKE";
+
+/** Advanced where value with operator */
+export interface WhereOperator<V> {
+  $eq?: V;
+  $ne?: V;
+  $gt?: V;
+  $gte?: V;
+  $lt?: V;
+  $lte?: V;
+  $like?: string;
+  $notLike?: string;
+  $in?: V[];
+  $notIn?: V[];
+  $between?: [V, V];
+  $isNull?: boolean;
+}
+
+/** Where value - can be a simple value or an operator object */
+export type WhereValue<V> = V | WhereOperator<V>;
+
+/** Where clause conditions - supports simple equality or operator objects */
+export type WhereCondition<T> = {
+  [K in keyof T]?: WhereValue<T[K]>;
+};
+
+/** OR condition wrapper */
+export interface OrCondition<T> {
+  $or: WhereCondition<T>[];
+}
+
+/** AND condition wrapper */
+export interface AndCondition<T> {
+  $and: WhereCondition<T>[];
+}
+
+/** Combined where condition that supports OR and AND */
+export type AdvancedWhereCondition<T> = WhereCondition<T> | OrCondition<T> | AndCondition<T>;
+
+/** Aggregate function types */
+export type AggregateFunction = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 
 /** Order direction */
 export type OrderDirection = "ASC" | "DESC";

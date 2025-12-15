@@ -438,4 +438,552 @@ describe("BunQL", () => {
       expect(sql).toContain("DEFAULT");
     });
   });
+
+  describe("Advanced WHERE operators", () => {
+    test("should support $gt (greater than)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ name: "A", price: 10 });
+      Product.insert({ name: "B", price: 20 });
+      Product.insert({ name: "C", price: 30 });
+
+      const results = Product.find({ price: { $gt: 15 } }).all();
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.name).sort()).toEqual(["B", "C"]);
+    });
+
+    test("should support $gte (greater than or equal)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 10 });
+      Product.insert({ price: 20 });
+      Product.insert({ price: 30 });
+
+      const results = Product.find({ price: { $gte: 20 } }).all();
+      expect(results).toHaveLength(2);
+    });
+
+    test("should support $lt (less than)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 10 });
+      Product.insert({ price: 20 });
+      Product.insert({ price: 30 });
+
+      const results = Product.find({ price: { $lt: 25 } }).all();
+      expect(results).toHaveLength(2);
+    });
+
+    test("should support $lte (less than or equal)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 10 });
+      Product.insert({ price: 20 });
+      Product.insert({ price: 30 });
+
+      const results = Product.find({ price: { $lte: 20 } }).all();
+      expect(results).toHaveLength(2);
+    });
+
+    test("should support $ne (not equal)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      Product.insert({ status: "active" });
+      Product.insert({ status: "inactive" });
+      Product.insert({ status: "active" });
+
+      const results = Product.find({ status: { $ne: "active" } }).all();
+      expect(results).toHaveLength(1);
+      expect(results[0].status).toBe("inactive");
+    });
+
+    test("should support $like", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@gmail.com" });
+      User.insert({ email: "bob@yahoo.com" });
+      User.insert({ email: "charlie@gmail.com" });
+
+      const results = User.find({ email: { $like: "%gmail%" } }).all();
+      expect(results).toHaveLength(2);
+    });
+
+    test("should support $notLike", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@gmail.com" });
+      User.insert({ email: "bob@yahoo.com" });
+      User.insert({ email: "charlie@gmail.com" });
+
+      const results = User.find({ email: { $notLike: "%gmail%" } }).all();
+      expect(results).toHaveLength(1);
+      expect(results[0].email).toBe("bob@yahoo.com");
+    });
+
+    test("should support $in", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin" });
+      User.insert({ role: "user" });
+      User.insert({ role: "guest" });
+      User.insert({ role: "moderator" });
+
+      const results = User.find({ role: { $in: ["admin", "moderator"] } }).all();
+      expect(results).toHaveLength(2);
+    });
+
+    test("should support $notIn", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin" });
+      User.insert({ role: "user" });
+      User.insert({ role: "guest" });
+
+      const results = User.find({ role: { $notIn: ["admin", "guest"] } }).all();
+      expect(results).toHaveLength(1);
+      expect(results[0].role).toBe("user");
+    });
+
+    test("should support $between", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 5 });
+      Product.insert({ price: 10 });
+      Product.insert({ price: 15 });
+      Product.insert({ price: 20 });
+      Product.insert({ price: 25 });
+
+      const results = Product.find({ price: { $between: [10, 20] } }).all();
+      expect(results).toHaveLength(3);
+    });
+
+    test("should support $isNull", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        phone: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@example.com", phone: "123456" });
+      User.insert({ email: "bob@example.com" });
+
+      const withoutPhone = User.find({ phone: { $isNull: true } }).all();
+      expect(withoutPhone).toHaveLength(1);
+      expect(withoutPhone[0].email).toBe("bob@example.com");
+
+      const withPhone = User.find({ phone: { $isNull: false } }).all();
+      expect(withPhone).toHaveLength(1);
+      expect(withPhone[0].email).toBe("alice@example.com");
+    });
+
+    test("should support combining multiple operators on same field", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 5 });
+      Product.insert({ price: 10 });
+      Product.insert({ price: 15 });
+      Product.insert({ price: 20 });
+
+      const results = Product.find({ price: { $gte: 10, $lt: 20 } }).all();
+      expect(results).toHaveLength(2);
+    });
+  });
+
+  describe("OR conditions", () => {
+    test("should support orWhere", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active", role: "admin" });
+      User.insert({ status: "inactive", role: "user" });
+      User.insert({ status: "active", role: "user" });
+
+      const results = User.find({ status: "active" })
+        .orWhere({ role: "admin" })
+        .all();
+      
+      // Should get active users OR admins
+      expect(results.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("Upsert operations", () => {
+    test("should insert with upsert when record does not exist", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true },
+        email: { type: "TEXT", unique: true },
+        name: { type: "TEXT" },
+      });
+
+      const result = User.upsert({ id: 1, email: "test@example.com", name: "Test" });
+      expect(result.id).toBe(1);
+      expect(result.email).toBe("test@example.com");
+      expect(User.count()).toBe(1);
+    });
+
+    test("should replace with upsert when record exists", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true },
+        email: { type: "TEXT", unique: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ id: 1, email: "test@example.com", name: "Original" });
+      User.upsert({ id: 1, email: "test@example.com", name: "Updated" });
+
+      const user = User.findById(1);
+      expect(user?.name).toBe("Updated");
+      expect(User.count()).toBe(1);
+    });
+
+    test("should support upsertOn with conflict columns", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        name: { type: "TEXT" },
+        login_count: { type: "INTEGER" },
+      });
+
+      User.insert({ email: "test@example.com", name: "Original", login_count: 1 });
+      
+      User.upsertOn(
+        { email: "test@example.com", name: "Updated", login_count: 2 },
+        ["email"]
+      );
+
+      const users = User.all();
+      expect(users).toHaveLength(1);
+      expect(users[0].name).toBe("Updated");
+    });
+  });
+
+  describe("Aggregate functions", () => {
+    test("should support sum", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+      });
+
+      Order.insert({ amount: 10 });
+      Order.insert({ amount: 20 });
+      Order.insert({ amount: 30 });
+
+      expect(Order.sum("amount")).toBe(60);
+    });
+
+    test("should support sum with where clause", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+        status: { type: "TEXT" },
+      });
+
+      Order.insert({ amount: 10, status: "completed" });
+      Order.insert({ amount: 20, status: "pending" });
+      Order.insert({ amount: 30, status: "completed" });
+
+      expect(Order.sum("amount", { status: "completed" })).toBe(40);
+    });
+
+    test("should support avg", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+      });
+
+      Order.insert({ amount: 10 });
+      Order.insert({ amount: 20 });
+      Order.insert({ amount: 30 });
+
+      expect(Order.avg("amount")).toBe(20);
+    });
+
+    test("should support min", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+      });
+
+      Order.insert({ amount: 10 });
+      Order.insert({ amount: 5 });
+      Order.insert({ amount: 30 });
+
+      expect(Order.min("amount")).toBe(5);
+    });
+
+    test("should support max", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+      });
+
+      Order.insert({ amount: 10 });
+      Order.insert({ amount: 50 });
+      Order.insert({ amount: 30 });
+
+      expect(Order.max("amount")).toBe(50);
+    });
+
+    test("should support aggregates via QueryBuilder", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        amount: { type: "REAL" },
+        status: { type: "TEXT" },
+      });
+
+      Order.insert({ amount: 10, status: "completed" });
+      Order.insert({ amount: 20, status: "completed" });
+      Order.insert({ amount: 30, status: "pending" });
+
+      const sum = Order.find({ status: "completed" }).sum("amount");
+      expect(sum).toBe(30);
+
+      const count = Order.find({ status: "completed" }).count();
+      expect(count).toBe(2);
+    });
+  });
+
+  describe("Utility methods", () => {
+    test("should support exists()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      expect(User.exists()).toBe(false);
+
+      User.insert({ email: "test@example.com" });
+      expect(User.exists()).toBe(true);
+      expect(User.exists({ email: "test@example.com" })).toBe(true);
+      expect(User.exists({ email: "nonexistent@example.com" })).toBe(false);
+    });
+
+    test("should support firstOrFail()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+
+      const found = User.find({ email: "test@example.com" }).firstOrFail();
+      expect(found.email).toBe("test@example.com");
+
+      expect(() => {
+        User.find({ email: "nonexistent@example.com" }).firstOrFail();
+      }).toThrow();
+    });
+
+    test("should support findByIdOrFail()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+
+      const found = User.findByIdOrFail(1);
+      expect(found.email).toBe("test@example.com");
+
+      expect(() => {
+        User.findByIdOrFail(999);
+      }).toThrow();
+    });
+
+    test("should support pluck()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com" });
+      User.insert({ email: "b@example.com" });
+      User.insert({ email: "c@example.com" });
+
+      const emails = User.pluck("email");
+      expect(emails).toHaveLength(3);
+      expect(emails).toContain("a@example.com");
+      expect(emails).toContain("b@example.com");
+      expect(emails).toContain("c@example.com");
+    });
+
+    test("should support distinct()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin" });
+      User.insert({ role: "user" });
+      User.insert({ role: "user" });
+      User.insert({ role: "admin" });
+      User.insert({ role: "guest" });
+
+      const roles = User.distinct("role");
+      expect(roles).toHaveLength(3);
+      expect(roles.sort()).toEqual(["admin", "guest", "user"]);
+    });
+
+    test("should support distinct via QueryBuilder", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin", status: "active" });
+      User.insert({ role: "user", status: "active" });
+      User.insert({ role: "user", status: "active" });
+
+      const results = User.find().select("role").distinct().all();
+      expect(results).toHaveLength(2);
+    });
+  });
+
+  describe("Increment and Decrement", () => {
+    test("should support increment()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        login_count: { type: "INTEGER" },
+      });
+
+      User.insert({ login_count: 5 });
+      User.increment("login_count");
+
+      const user = User.findById(1);
+      expect(user?.login_count).toBe(6);
+    });
+
+    test("should support increment with custom amount", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        points: { type: "INTEGER" },
+      });
+
+      User.insert({ points: 10 });
+      User.increment("points", 5);
+
+      const user = User.findById(1);
+      expect(user?.points).toBe(15);
+    });
+
+    test("should support increment with where clause", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        points: { type: "INTEGER" },
+      });
+
+      User.insert({ status: "active", points: 10 });
+      User.insert({ status: "inactive", points: 10 });
+
+      User.increment("points", 5, { status: "active" });
+
+      expect(User.findById(1)?.points).toBe(15);
+      expect(User.findById(2)?.points).toBe(10);
+    });
+
+    test("should support decrement()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        credits: { type: "INTEGER" },
+      });
+
+      User.insert({ credits: 100 });
+      User.decrement("credits", 25);
+
+      const user = User.findById(1);
+      expect(user?.credits).toBe(75);
+    });
+  });
+
+  describe("Truncate", () => {
+    test("should truncate table", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com" });
+      User.insert({ email: "b@example.com" });
+      User.insert({ email: "c@example.com" });
+
+      expect(User.count()).toBe(3);
+
+      User.truncate();
+
+      expect(User.count()).toBe(0);
+    });
+
+    test("should reset autoincrement after truncate", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "first@example.com" });
+      User.insert({ email: "second@example.com" });
+      
+      User.truncate();
+
+      const newUser = User.insert({ email: "new@example.com" });
+      expect(newUser.id).toBe(1);
+    });
+  });
+
+  describe("GROUP BY and HAVING", () => {
+    test("should support groupBy", () => {
+      const Order = ql.define("order", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        customer_id: { type: "INTEGER" },
+        amount: { type: "REAL" },
+      });
+
+      Order.insert({ customer_id: 1, amount: 10 });
+      Order.insert({ customer_id: 1, amount: 20 });
+      Order.insert({ customer_id: 2, amount: 30 });
+      Order.insert({ customer_id: 2, amount: 40 });
+
+      // Get count per customer
+      const { sql } = Order.find().select("customer_id").groupBy("customer_id").toSQL();
+      expect(sql).toContain("GROUP BY");
+    });
+  });
 });
