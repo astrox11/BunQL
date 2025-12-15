@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      CHANGELOG_COMMITS: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -79,15 +81,15 @@ jobs:
             echo "## Nightly Release v${{ steps.current.outputs.version }}" > CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "### Recent Changes" >> CHANGELOG.md
-            git log HEAD~10..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+            git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
           else
             echo "## Release v${{ steps.current.outputs.version }}" > CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "### Changes" >> CHANGELOG.md
             if [ "${{ steps.previous.outputs.version }}" != "none" ]; then
-              git log v${{ steps.previous.outputs.version }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md || git log HEAD~10..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+              git log v${{ steps.previous.outputs.version }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md 2>/dev/null || git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
             else
-              git log HEAD~10..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+              git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
             fi
           fi
           echo "" >> CHANGELOG.md
@@ -101,6 +103,7 @@ jobs:
           body_path: CHANGELOG.md
           prerelease: ${{ steps.tag.outputs.prerelease }}
           files: |
-            dist/**/*
+            dist/*.js
+            dist/*.d.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
