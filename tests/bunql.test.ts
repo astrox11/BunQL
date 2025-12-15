@@ -920,6 +920,25 @@ describe("BunQL", () => {
       expect(User.findById(2)?.points).toBe(10);
     });
 
+    test("should support increment with advanced WHERE operators", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        level: { type: "INTEGER" },
+        points: { type: "INTEGER" },
+      });
+
+      User.insert({ level: 1, points: 10 });
+      User.insert({ level: 5, points: 10 });
+      User.insert({ level: 10, points: 10 });
+
+      // Increment points for users with level >= 5
+      User.increment("points", 5, { level: { $gte: 5 } });
+
+      expect(User.findById(1)?.points).toBe(10);  // level 1, not incremented
+      expect(User.findById(2)?.points).toBe(15);  // level 5, incremented
+      expect(User.findById(3)?.points).toBe(15);  // level 10, incremented
+    });
+
     test("should support decrement()", () => {
       const User = ql.define("user", {
         id: { type: "INTEGER", primary: true, autoIncrement: true },

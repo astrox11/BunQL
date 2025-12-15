@@ -8,6 +8,7 @@ import type {
   WhereCondition,
 } from "./types";
 import { QueryBuilder } from "./query-builder";
+import { buildWhereClause } from "./where-builder";
 
 /**
  * Model<T> - Represents a database table with typed CRUD operations
@@ -363,13 +364,9 @@ export class Model<S extends SchemaDefinition> {
     const params: SQLQueryBindings[] = [amount];
 
     if (where) {
-      const whereKeys = Object.keys(where);
-      if (whereKeys.length > 0) {
-        const whereConditions = whereKeys.map((k) => {
-          params.push(where[k as keyof typeof where] as SQLQueryBindings);
-          return `"${k}" = ?`;
-        });
-        sql += ` WHERE ${whereConditions.join(" AND ")}`;
+      const whereClause = buildWhereClause(where, params);
+      if (whereClause) {
+        sql += ` WHERE ${whereClause}`;
       }
     }
 
@@ -398,8 +395,9 @@ export class Model<S extends SchemaDefinition> {
   truncate(): void {
     const sql = `DELETE FROM "${this.tableName}"`;
     this.db.exec(sql);
-    // Reset autoincrement counter
-    this.db.exec(`DELETE FROM sqlite_sequence WHERE name = '${this.tableName}'`);
+    // Reset autoincrement counter - use parameterized query for safety
+    const resetSeqStmt = this.db.prepare("DELETE FROM sqlite_sequence WHERE name = ?");
+    resetSeqStmt.run(this.tableName);
   }
 
   /**
