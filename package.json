@@ -1,6 +1,6 @@
 {
   "name": "bunql",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A minimal high performance ORM for Bun using bun:sqlite",
   "main": "dist/index.js",
   "module": "dist/index.js",
