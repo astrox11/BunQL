@@ -8,6 +8,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CHANGELOG_COMMITS: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -49,34 +53,57 @@ jobs:
         if: steps.changed.outputs.changed == 'false'
         run: echo "Version unchanged, skipping publish"
 
-      - name: Decide npm tag
+      - name: Decide release type
         if: steps.changed.outputs.changed == 'true'
         id: tag
         run: |
           V="${{ steps.current.outputs.version }}"
           if [[ "$V" =~ ^0\.0\.[0-9]+$ ]]; then
             echo "tag=nightly" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
           elif [[ "$V" =~ ^0\.[1-9][0-9]*\.0$ ]]; then
             echo "tag=next" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
           else
             echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Setup npm auth
+      - name: Build package
         if: steps.changed.outputs.changed == 'true'
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run build
 
-      - name: Publish
+      - name: Generate changelog
         if: steps.changed.outputs.changed == 'true'
-        run: bun publish --tag ${{ steps.tag.outputs.tag }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Nightly changelog
-        if: steps.tag.outputs.tag == 'nightly'
+        id: changelog
         run: |
-          echo "## Nightly changes"
-          git log HEAD~10..HEAD --pretty=format:"- %s"
+          if [ "${{ steps.tag.outputs.tag }}" = "nightly" ]; then
+            echo "## Nightly Release v${{ steps.current.outputs.version }}" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "### Recent Changes" >> CHANGELOG.md
+            git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          else
+            echo "## Release v${{ steps.current.outputs.version }}" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "### Changes" >> CHANGELOG.md
+            if [ "${{ steps.previous.outputs.version }}" != "none" ]; then
+              git log v${{ steps.previous.outputs.version }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md 2>/dev/null || git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+            else
+              git log HEAD~${{ env.CHANGELOG_COMMITS }}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+            fi
+          fi
+          echo "" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        if: steps.changed.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.current.outputs.version }}
+          name: Release v${{ steps.current.outputs.version }}
+          body_path: CHANGELOG.md
+          prerelease: ${{ steps.tag.outputs.prerelease }}
+          files: |
+            dist/*.js
+            dist/*.d.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
