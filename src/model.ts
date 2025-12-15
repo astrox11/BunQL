@@ -8,6 +8,7 @@ import type {
   WhereCondition,
 } from "./types";
 import { QueryBuilder } from "./query-builder";
+import { buildWhereClause } from "./where-builder";
 
 /**
  * Model<T> - Represents a database table with typed CRUD operations
@@ -219,6 +220,184 @@ export class Model<S extends SchemaDefinition> {
     const sql = `SELECT * FROM "${this.tableName}"`;
     const stmt = this.getStatement(sql);
     return stmt.all() as InferSchemaType<S>[];
+  }
+
+  /**
+   * Insert or replace a record (upsert)
+   * Uses SQLite's INSERT OR REPLACE
+   */
+  upsert(data: Partial<InferSchemaType<S>>): InferSchemaType<S> {
+    const keys = Object.keys(data);
+    const values = Object.values(data) as SQLQueryBindings[];
+    const placeholders = keys.map(() => "?").join(", ");
+    const columns = keys.map((k) => `"${k}"`).join(", ");
+
+    const sql = `INSERT OR REPLACE INTO "${this.tableName}" (${columns}) VALUES (${placeholders})`;
+    const stmt = this.getStatement(sql);
+    stmt.run(...values);
+
+    // Get the last inserted row
+    const lastId = this.db.query("SELECT last_insert_rowid() as id").get() as {
+      id: number;
+    };
+
+    if (this.primaryKey) {
+      return this.findById(lastId.id) as InferSchemaType<S>;
+    }
+
+    return { ...data } as InferSchemaType<S>;
+  }
+
+  /**
+   * Insert or update on conflict (more granular upsert)
+   * Uses SQLite's INSERT ... ON CONFLICT DO UPDATE
+   */
+  upsertOn(
+    data: Partial<InferSchemaType<S>>,
+    conflictColumns: (keyof InferSchemaType<S>)[],
+    updateData?: UpdateData<InferSchemaType<S>>
+  ): InferSchemaType<S> {
+    const keys = Object.keys(data);
+    const values = Object.values(data) as SQLQueryBindings[];
+    const placeholders = keys.map(() => "?").join(", ");
+    const columns = keys.map((k) => `"${k}"`).join(", ");
+    const conflictCols = conflictColumns.map((c) => `"${String(c)}"`).join(", ");
+
+    // Determine what to update on conflict
+    const updateKeys = updateData ? Object.keys(updateData) : keys.filter(k => !conflictColumns.includes(k as keyof InferSchemaType<S>));
+    const updateValues = updateData ? Object.values(updateData) as SQLQueryBindings[] : [];
+    const updateClauses = updateKeys.map((k) => `"${k}" = excluded."${k}"`).join(", ");
+
+    let sql = `INSERT INTO "${this.tableName}" (${columns}) VALUES (${placeholders})`;
+    sql += ` ON CONFLICT (${conflictCols}) DO UPDATE SET ${updateClauses}`;
+
+    const stmt = this.getStatement(sql);
+    stmt.run(...values, ...updateValues);
+
+    // Get the last inserted/updated row
+    const lastId = this.db.query("SELECT last_insert_rowid() as id").get() as {
+      id: number;
+    };
+
+    if (this.primaryKey) {
+      return this.findById(lastId.id) as InferSchemaType<S>;
+    }
+
+    return { ...data } as InferSchemaType<S>;
+  }
+
+  /**
+   * Check if any records exist matching the conditions
+   */
+  exists(where?: WhereCondition<InferSchemaType<S>>): boolean {
+    return this.find(where).exists();
+  }
+
+  /**
+   * Find a record by primary key or throw an error
+   */
+  findByIdOrFail(id: number | string): InferSchemaType<S> {
+    const result = this.findById(id);
+    if (result === null) {
+      throw new Error(`Record with id "${id}" not found in table "${this.tableName}"`);
+    }
+    return result;
+  }
+
+  /**
+   * Get array of values for a single column
+   */
+  pluck<K extends keyof InferSchemaType<S>>(column: K, where?: WhereCondition<InferSchemaType<S>>): InferSchemaType<S>[K][] {
+    return this.find(where).pluck(column);
+  }
+
+  /**
+   * Get distinct values for a column
+   */
+  distinct<K extends keyof InferSchemaType<S>>(column: K, where?: WhereCondition<InferSchemaType<S>>): InferSchemaType<S>[K][] {
+    const sql = where 
+      ? this.find(where).select(column as keyof InferSchemaType<S>).distinct().toSQL()
+      : { sql: `SELECT DISTINCT "${String(column)}" FROM "${this.tableName}"`, params: [] };
+    
+    const stmt = this.db.prepare(sql.sql);
+    const results = stmt.all(...sql.params) as Record<string, InferSchemaType<S>[K]>[];
+    return results.map(row => row[String(column) as string]);
+  }
+
+  /**
+   * Get the sum of a column
+   */
+  sum(column: keyof InferSchemaType<S>, where?: WhereCondition<InferSchemaType<S>>): number {
+    return this.find(where).sum(column);
+  }
+
+  /**
+   * Get the average of a column
+   */
+  avg(column: keyof InferSchemaType<S>, where?: WhereCondition<InferSchemaType<S>>): number {
+    return this.find(where).avg(column);
+  }
+
+  /**
+   * Get the minimum value of a column
+   */
+  min(column: keyof InferSchemaType<S>, where?: WhereCondition<InferSchemaType<S>>): number {
+    return this.find(where).min(column);
+  }
+
+  /**
+   * Get the maximum value of a column
+   */
+  max(column: keyof InferSchemaType<S>, where?: WhereCondition<InferSchemaType<S>>): number {
+    return this.find(where).max(column);
+  }
+
+  /**
+   * Increment a column value
+   */
+  increment(
+    column: keyof InferSchemaType<S>,
+    amount: number = 1,
+    where?: WhereCondition<InferSchemaType<S>>
+  ): number {
+    let sql = `UPDATE "${this.tableName}" SET "${String(column)}" = "${String(column)}" + ?`;
+    const params: SQLQueryBindings[] = [amount];
+
+    if (where) {
+      const whereClause = buildWhereClause(where, params);
+      if (whereClause) {
+        sql += ` WHERE ${whereClause}`;
+      }
+    }
+
+    const stmt = this.getStatement(sql);
+    stmt.run(...params);
+
+    return (
+      this.db.query("SELECT changes() as count").get() as { count: number }
+    ).count;
+  }
+
+  /**
+   * Decrement a column value
+   */
+  decrement(
+    column: keyof InferSchemaType<S>,
+    amount: number = 1,
+    where?: WhereCondition<InferSchemaType<S>>
+  ): number {
+    return this.increment(column, -amount, where);
+  }
+
+  /**
+   * Truncate the table (delete all records)
+   */
+  truncate(): void {
+    const sql = `DELETE FROM "${this.tableName}"`;
+    this.db.exec(sql);
+    // Reset autoincrement counter - use parameterized query for safety
+    const resetSeqStmt = this.db.prepare("DELETE FROM sqlite_sequence WHERE name = ?");
+    resetSeqStmt.run(this.tableName);
   }
 
   /**

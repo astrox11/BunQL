@@ -39,16 +39,23 @@ export { Model } from "./model";
 export { QueryBuilder } from "./query-builder";
 
 export type {
+  AdvancedWhereCondition,
+  AggregateFunction,
+  AndCondition,
   BunQLConfig,
   ColumnDefinition,
   ColumnType,
+  ComparisonOperator,
   InferSchemaType,
   OrderBy,
   OrderDirection,
+  OrCondition,
   QueryOptions,
   SchemaDefinition,
   SQLQueryBindings,
   TransactionCallback,
   UpdateData,
   WhereCondition,
+  WhereOperator,
+  WhereValue,
 } from "./types";
