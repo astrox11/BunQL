@@ -11,6 +11,7 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "files": ["dist"],
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target bun && tsc -p tsconfig.build.json",
     "test": "bun test",
