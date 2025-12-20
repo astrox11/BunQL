@@ -1,33 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, UpdateData, WhereCondition, WhereOperator } from "./types";
-import { buildWhereClause } from "./where-builder";
-
-/**
- * Map comparison operator string to WhereOperator key
- */
-function operatorToCondition<V>(operator: ComparisonOperator, value: V): WhereOperator<V> {
-  switch (operator) {
-    case "=":
-      return { $eq: value };
-    case "!=":
-    case "<>":
-      return { $ne: value };
-    case ">":
-      return { $gt: value };
-    case ">=":
-      return { $gte: value };
-    case "<":
-      return { $lt: value };
-    case "<=":
-      return { $lte: value };
-    case "LIKE":
-      return { $like: value as unknown as string } as WhereOperator<V>;
-    case "NOT LIKE":
-      return { $notLike: value as unknown as string } as WhereOperator<V>;
-    default:
-      return { $eq: value };
-  }
-}
+import { buildWhereClause, operatorToCondition } from "./where-builder";
 
 /**
  * UpdateBuilder<T> - A fluent query builder for constructing UPDATE queries

@@ -1,4 +1,4 @@
-import type { SQLQueryBindings, WhereCondition, WhereOperator } from "./types";
+import type { ComparisonOperator, SQLQueryBindings, WhereCondition, WhereOperator } from "./types";
 
 /**
  * Check if a value is a WhereOperator object
@@ -7,6 +7,33 @@ export function isWhereOperator<V>(value: unknown): value is WhereOperator<V> {
   if (value === null || typeof value !== "object") return false;
   const ops = ["$eq", "$ne", "$gt", "$gte", "$lt", "$lte", "$like", "$notLike", "$in", "$notIn", "$between", "$isNull"];
   return ops.some(op => op in (value as Record<string, unknown>));
+}
+
+/**
+ * Map comparison operator string to WhereOperator key
+ */
+export function operatorToCondition<V>(operator: ComparisonOperator, value: V): WhereOperator<V> {
+  switch (operator) {
+    case "=":
+      return { $eq: value };
+    case "!=":
+    case "<>":
+      return { $ne: value };
+    case ">":
+      return { $gt: value };
+    case ">=":
+      return { $gte: value };
+    case "<":
+      return { $lt: value };
+    case "<=":
+      return { $lte: value };
+    case "LIKE":
+      return { $like: value as unknown as string } as WhereOperator<V>;
+    case "NOT LIKE":
+      return { $notLike: value as unknown as string } as WhereOperator<V>;
+    default:
+      return { $eq: value };
+  }
 }
 
 /**
