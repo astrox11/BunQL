@@ -1325,4 +1325,375 @@ describe("BunQL", () => {
       expect(User.count()).toBe(2);
     });
   });
+
+  describe("UpdateBuilder", () => {
+    test("should support update(data).where().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com", status: "active" });
+      User.insert({ email: "b@example.com", status: "inactive" });
+      User.insert({ email: "c@example.com", status: "active" });
+
+      const updatedCount = User.update({ status: "archived" }).where({ email: "b@example.com" }).run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.findById(2)?.status).toBe("archived");
+      expect(User.findById(1)?.status).toBe("active");
+      expect(User.findById(3)?.status).toBe("active");
+    });
+
+    test("should support update(data).where().orWhere().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com", status: "active", role: "admin" });
+      User.insert({ email: "b@example.com", status: "inactive", role: "user" });
+      User.insert({ email: "c@example.com", status: "active", role: "user" });
+      User.insert({ email: "d@example.com", status: "active", role: "guest" });
+
+      // Update inactive users OR guests to be 'pending'
+      const updatedCount = User.update({ status: "pending" })
+        .where({ status: "inactive" })
+        .orWhere({ role: "guest" })
+        .run();
+      
+      expect(updatedCount).toBe(2);
+      expect(User.findById(2)?.status).toBe("pending"); // was inactive
+      expect(User.findById(4)?.status).toBe("pending"); // was guest
+      expect(User.findById(1)?.status).toBe("active"); // unchanged
+      expect(User.findById(3)?.status).toBe("active"); // unchanged
+    });
+
+    test("should support update() with advanced WHERE operators", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+        discounted: { type: "INTEGER" },
+      });
+
+      Product.insert({ name: "A", price: 5, discounted: 0 });
+      Product.insert({ name: "B", price: 10, discounted: 0 });
+      Product.insert({ name: "C", price: 15, discounted: 0 });
+      Product.insert({ name: "D", price: 20, discounted: 0 });
+
+      // Discount products with price > 12
+      const updatedCount = Product.update({ discounted: 1 }).where({ price: { $gt: 12 } }).run();
+      
+      expect(updatedCount).toBe(2);
+      expect(Product.findById(1)?.discounted).toBe(0);
+      expect(Product.findById(2)?.discounted).toBe(0);
+      expect(Product.findById(3)?.discounted).toBe(1);
+      expect(Product.findById(4)?.discounted).toBe(1);
+    });
+
+    test("should support update() with $in operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+        active: { type: "INTEGER" },
+      });
+
+      User.insert({ role: "admin", active: 1 });
+      User.insert({ role: "user", active: 1 });
+      User.insert({ role: "guest", active: 1 });
+      User.insert({ role: "moderator", active: 1 });
+
+      const updatedCount = User.update({ active: 0 }).where({ role: { $in: ["guest", "user"] } }).run();
+      
+      expect(updatedCount).toBe(2);
+      expect(User.findById(1)?.active).toBe(1);
+      expect(User.findById(2)?.active).toBe(0);
+      expect(User.findById(3)?.active).toBe(0);
+      expect(User.findById(4)?.active).toBe(1);
+    });
+
+    test("should support update() with LIMIT", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      // Only update 2 inactive users
+      const updatedCount = User.update({ status: "archived" }).where({ status: "inactive" }).limit(2).run();
+      
+      expect(updatedCount).toBe(2);
+      // Two users should be archived, one inactive should remain
+      expect(User.find({ status: "archived" }).count()).toBe(2);
+      expect(User.find({ status: "inactive" }).count()).toBe(1);
+    });
+
+    test("should support update() with orderBy and limit", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        created_at: { type: "INTEGER" },
+        archived: { type: "INTEGER" },
+      });
+
+      User.insert({ name: "First", created_at: 100, archived: 0 });
+      User.insert({ name: "Second", created_at: 200, archived: 0 });
+      User.insert({ name: "Third", created_at: 300, archived: 0 });
+
+      // Archive the oldest user
+      const updatedCount = User.update({ archived: 1 }).orderBy("created_at", "ASC").limit(1).run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.find({ name: "First" }).first()?.archived).toBe(1);
+      expect(User.find({ name: "Second" }).first()?.archived).toBe(0);
+      expect(User.find({ name: "Third" }).first()?.archived).toBe(0);
+    });
+
+    test("should expose toSQL() for debugging", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      const { sql, params } = User.update({ status: "archived" })
+        .where({ status: "inactive" })
+        .orWhere({ email: { $like: "%test%" } })
+        .limit(10)
+        .toSQL();
+
+      expect(sql).toContain("UPDATE");
+      expect(sql).toContain("SET");
+      expect(sql).toContain("WHERE");
+      expect(sql).toContain("OR");
+      expect(sql).toContain("LIMIT 10");
+      expect(params).toContain("archived");
+      expect(params).toContain("inactive");
+      expect(params).toContain("%test%");
+    });
+
+    test("should preserve existing update(where, data) behavior", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        username: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com", username: "oldname" });
+      const updatedCount = User.update({ email: "test@example.com" }, { username: "newname" });
+      
+      expect(updatedCount).toBe(1);
+      expect(User.findById(1)?.username).toBe("newname");
+    });
+
+    test("should work with updateById after changes", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "old@example.com" });
+      const result = User.updateById(1, { email: "new@example.com" });
+      
+      expect(result).toBe(true);
+      expect(User.findById(1)?.email).toBe("new@example.com");
+    });
+
+    test("should support multiple chained where conditions", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive", role: "admin" });
+      User.insert({ status: "inactive", role: "user" });
+      User.insert({ status: "active", role: "user" });
+
+      // Update inactive users with role "user"
+      const updatedCount = User.update({ status: "archived" })
+        .where({ status: "inactive" })
+        .where({ role: "user" })
+        .run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.findById(2)?.status).toBe("archived");
+      expect(User.findById(1)?.status).toBe("inactive");
+    });
+
+    test("should update all matching records without limit", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const updatedCount = User.update({ status: "archived" }).where({ status: "inactive" }).run();
+      
+      expect(updatedCount).toBe(3);
+      expect(User.find({ status: "archived" }).count()).toBe(3);
+      expect(User.find({ status: "active" }).count()).toBe(1);
+    });
+
+    test("should support where(column, operator, value) syntax", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        pn: { type: "TEXT" },
+        lid: { type: "TEXT" },
+        active: { type: "INTEGER" },
+      });
+
+      User.insert({ pn: "user1", lid: "lid1", active: 1 });
+      User.insert({ pn: "user2", lid: "lid2", active: 1 });
+      User.insert({ pn: "user3", lid: "lid3", active: 1 });
+
+      const updatedCount = User.update({ active: 0 }).where("pn", "=", "user1").run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.findById(1)?.active).toBe(0);
+      expect(User.findById(2)?.active).toBe(1);
+    });
+
+    test("should support where(column, operator, value).orWhere(column, operator, value) syntax", () => {
+      const Auth = ql.define("auth", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        data: { type: "TEXT" },
+      });
+
+      Auth.insert({ name: "token1", data: "old_data1" });
+      Auth.insert({ name: "token2", data: "old_data2" });
+      Auth.insert({ name: "token3", data: "old_data3" });
+
+      // Update where name = "token1" OR name = "token3"
+      const updatedCount = Auth.update({ data: "new_data" })
+        .where("name", "=", "token1")
+        .orWhere("name", "=", "token3")
+        .run();
+      
+      expect(updatedCount).toBe(2);
+      expect(Auth.find({ name: "token1" }).first()?.data).toBe("new_data");
+      expect(Auth.find({ name: "token2" }).first()?.data).toBe("old_data2");
+      expect(Auth.find({ name: "token3" }).first()?.data).toBe("new_data");
+    });
+
+    test("should support mixed where syntax (object and column/operator/value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active", role: "admin" });
+      User.insert({ status: "inactive", role: "user" });
+      User.insert({ status: "active", role: "user" });
+
+      // Mix object and column/operator/value syntax
+      const updatedCount = User.update({ status: "archived" })
+        .where({ status: "inactive" })
+        .orWhere("role", "=", "admin")
+        .run();
+      
+      expect(updatedCount).toBe(2);
+      expect(User.findById(1)?.status).toBe("archived"); // was admin
+      expect(User.findById(2)?.status).toBe("archived"); // was inactive
+      expect(User.findById(3)?.status).toBe("active"); // unchanged
+    });
+
+    test("should support comparison operators in where(column, operator, value)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+        featured: { type: "INTEGER" },
+      });
+
+      Product.insert({ name: "A", price: 10, featured: 0 });
+      Product.insert({ name: "B", price: 20, featured: 0 });
+      Product.insert({ name: "C", price: 30, featured: 0 });
+      Product.insert({ name: "D", price: 40, featured: 0 });
+
+      // Feature products with price > 25
+      const updatedCount = Product.update({ featured: 1 }).where("price", ">", 25).run();
+      
+      expect(updatedCount).toBe(2);
+      expect(Product.findById(1)?.featured).toBe(0);
+      expect(Product.findById(2)?.featured).toBe(0);
+      expect(Product.findById(3)?.featured).toBe(1);
+      expect(Product.findById(4)?.featured).toBe(1);
+    });
+
+    test("should support LIKE operator in where(column, operator, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        verified: { type: "INTEGER" },
+      });
+
+      User.insert({ email: "alice@gmail.com", verified: 0 });
+      User.insert({ email: "bob@yahoo.com", verified: 0 });
+      User.insert({ email: "charlie@gmail.com", verified: 0 });
+
+      const updatedCount = User.update({ verified: 1 }).where("email", "LIKE", "%gmail%").run();
+      
+      expect(updatedCount).toBe(2);
+      expect(User.findById(1)?.verified).toBe(1);
+      expect(User.findById(2)?.verified).toBe(0);
+      expect(User.findById(3)?.verified).toBe(1);
+    });
+
+    test("should support != operator in where(column, operator, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const updatedCount = User.update({ status: "pending" }).where("status", "!=", "active").run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.findById(2)?.status).toBe("pending");
+      expect(User.findById(1)?.status).toBe("active");
+      expect(User.findById(3)?.status).toBe("active");
+    });
+
+    test("should work with the pattern from the issue", () => {
+      // This test validates the exact use case from the issue:
+      // Auth.update({ data: JSON.stringify(data) }).where("name", "=", name).run();
+      
+      const Auth = ql.define("auth", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        data: { type: "TEXT" },
+      });
+
+      // Insert initial data
+      Auth.insert({ name: "test_key", data: JSON.stringify({ value: "initial" }) });
+      
+      // Update using the new builder pattern
+      const newData = { value: "updated" };
+      Auth.update({ data: JSON.stringify(newData) })
+        .where("name", "=", "test_key")
+        .run();
+
+      // Verify the update
+      const updated = Auth.find({ name: "test_key" }).first();
+      expect(updated?.data).toBe(JSON.stringify({ value: "updated" }));
+    });
+  });
 });

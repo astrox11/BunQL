@@ -26,8 +26,11 @@
  * const all = User.find().all();
  * const byId = User.findById(1);
  * 
- * // Update
+ * // Update (immediate execution)
  * User.update({ email: "a@mail.com" }, { username: "alice_updated" });
+ * 
+ * // Update (builder pattern)
+ * User.update({ username: "alice_updated" }).where("email", "=", "a@mail.com").run();
  * 
  * // Delete (immediate execution)
  * User.delete({ email: "a@mail.com" });
@@ -41,6 +44,7 @@ export { BunQL } from "./bunql";
 export { Model } from "./model";
 export { QueryBuilder } from "./query-builder";
 export { DeleteBuilder } from "./delete-builder";
+export { UpdateBuilder } from "./update-builder";
 
 export type {
   AdvancedWhereCondition,
