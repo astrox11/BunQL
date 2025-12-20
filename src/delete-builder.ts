@@ -33,25 +33,18 @@ export class DeleteBuilder<T> {
    * Add WHERE conditions to the query (AND)
    * @overload where(conditions) - Add conditions object
    * @overload where(column, operator, value) - Add single condition with operator
-   * @overload where(column, value) - Add single equality condition (shorthand for where(column, "=", value))
    */
   where(conditions: WhereCondition<T>): DeleteBuilder<T>;
   where<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
-  where<K extends keyof T>(column: K, value: T[K]): DeleteBuilder<T>;
   where<K extends keyof T>(
     conditionsOrColumn: WhereCondition<T> | K,
-    operatorOrValue?: ComparisonOperator | T[K],
+    operator?: ComparisonOperator,
     value?: T[K]
   ): DeleteBuilder<T> {
-    if (typeof conditionsOrColumn === "string") {
-      if (value !== undefined) {
-        // Called as where(column, operator, value)
-        const condition = operatorToCondition(operatorOrValue as ComparisonOperator, value);
-        this._where = { ...this._where, [conditionsOrColumn]: condition } as WhereCondition<T>;
-      } else if (operatorOrValue !== undefined) {
-        // Called as where(column, value) - shorthand for equality
-        this._where = { ...this._where, [conditionsOrColumn]: operatorOrValue } as WhereCondition<T>;
-      }
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as where(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._where = { ...this._where, [conditionsOrColumn]: condition } as WhereCondition<T>;
     } else {
       // Called as where(conditions)
       this._where = { ...this._where, ...(conditionsOrColumn as WhereCondition<T>) };
@@ -63,25 +56,18 @@ export class DeleteBuilder<T> {
    * Add OR conditions to the query
    * @overload orWhere(conditions) - Add conditions object
    * @overload orWhere(column, operator, value) - Add single condition with operator
-   * @overload orWhere(column, value) - Add single equality condition (shorthand for orWhere(column, "=", value))
    */
   orWhere(conditions: WhereCondition<T>): DeleteBuilder<T>;
   orWhere<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
-  orWhere<K extends keyof T>(column: K, value: T[K]): DeleteBuilder<T>;
   orWhere<K extends keyof T>(
     conditionsOrColumn: WhereCondition<T> | K,
-    operatorOrValue?: ComparisonOperator | T[K],
+    operator?: ComparisonOperator,
     value?: T[K]
   ): DeleteBuilder<T> {
-    if (typeof conditionsOrColumn === "string") {
-      if (value !== undefined) {
-        // Called as orWhere(column, operator, value)
-        const condition = operatorToCondition(operatorOrValue as ComparisonOperator, value);
-        this._orConditions.push({ [conditionsOrColumn]: condition } as WhereCondition<T>);
-      } else if (operatorOrValue !== undefined) {
-        // Called as orWhere(column, value) - shorthand for equality
-        this._orConditions.push({ [conditionsOrColumn]: operatorOrValue } as WhereCondition<T>);
-      }
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as orWhere(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._orConditions.push({ [conditionsOrColumn]: condition } as WhereCondition<T>);
     } else {
       // Called as orWhere(conditions)
       this._orConditions.push(conditionsOrColumn as WhereCondition<T>);
