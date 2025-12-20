@@ -1211,5 +1211,118 @@ describe("BunQL", () => {
       expect(deletedCount).toBe(3);
       expect(User.count()).toBe(1);
     });
+
+    test("should support where(column, operator, value) syntax", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        pn: { type: "TEXT" },
+        lid: { type: "TEXT" },
+      });
+
+      User.insert({ pn: "user1", lid: "lid1" });
+      User.insert({ pn: "user2", lid: "lid2" });
+      User.insert({ pn: "user3", lid: "lid3" });
+
+      const deletedCount = User.delete().where("pn", "=", "user1").run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+      expect(User.find({ pn: "user1" }).first()).toBeNull();
+    });
+
+    test("should support where(column, operator, value).orWhere(column, operator, value) syntax", () => {
+      const Sudo = ql.define("sudo", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        pn: { type: "TEXT" },
+        lid: { type: "TEXT" },
+      });
+
+      Sudo.insert({ pn: "user1", lid: "lid1" });
+      Sudo.insert({ pn: "user2", lid: "lid2" });
+      Sudo.insert({ pn: "user3", lid: "user1" }); // lid matches user1's pn
+
+      // Delete where pn = "user1" OR lid = "user1"
+      const deletedCount = Sudo.delete()
+        .where("pn", "=", "user1")
+        .orWhere("lid", "=", "user1")
+        .run();
+      
+      expect(deletedCount).toBe(2);
+      expect(Sudo.count()).toBe(1);
+      expect(Sudo.find({ pn: "user2" }).first()).not.toBeNull();
+    });
+
+    test("should support mixed where syntax (object and column/operator/value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active", role: "admin" });
+      User.insert({ status: "inactive", role: "user" });
+      User.insert({ status: "active", role: "user" });
+
+      // Mix object and column/operator/value syntax
+      const deletedCount = User.delete()
+        .where({ status: "inactive" })
+        .orWhere("role", "=", "admin")
+        .run();
+      
+      expect(deletedCount).toBe(2);
+      expect(User.count()).toBe(1);
+    });
+
+    test("should support comparison operators in where(column, operator, value)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ name: "A", price: 10 });
+      Product.insert({ name: "B", price: 20 });
+      Product.insert({ name: "C", price: 30 });
+      Product.insert({ name: "D", price: 40 });
+
+      // Delete products with price > 25
+      const deletedCount = Product.delete().where("price", ">", 25).run();
+      
+      expect(deletedCount).toBe(2);
+      expect(Product.count()).toBe(2);
+    });
+
+    test("should support LIKE operator in where(column, operator, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@gmail.com" });
+      User.insert({ email: "bob@yahoo.com" });
+      User.insert({ email: "charlie@gmail.com" });
+
+      const deletedCount = User.delete().where("email", "LIKE", "%gmail%").run();
+      
+      expect(deletedCount).toBe(2);
+      expect(User.count()).toBe(1);
+      expect(User.find({ email: "bob@yahoo.com" }).first()).not.toBeNull();
+    });
+
+    test("should support != operator in where(column, operator, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const deletedCount = User.delete().where("status", "!=", "active").run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+    });
   });
 });

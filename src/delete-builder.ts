@@ -1,6 +1,33 @@
 import type { Database } from "bun:sqlite";
-import type { OrderBy, OrderDirection, SQLQueryBindings, WhereCondition } from "./types";
+import type { ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, WhereCondition, WhereOperator } from "./types";
 import { buildWhereClause } from "./where-builder";
+
+/**
+ * Map comparison operator string to WhereOperator key
+ */
+function operatorToCondition<V>(operator: ComparisonOperator, value: V): WhereOperator<V> {
+  switch (operator) {
+    case "=":
+      return { $eq: value };
+    case "!=":
+    case "<>":
+      return { $ne: value };
+    case ">":
+      return { $gt: value };
+    case ">=":
+      return { $gte: value };
+    case "<":
+      return { $lt: value };
+    case "<=":
+      return { $lte: value };
+    case "LIKE":
+      return { $like: value as unknown as string } as WhereOperator<V>;
+    case "NOT LIKE":
+      return { $notLike: value as unknown as string } as WhereOperator<V>;
+    default:
+      return { $eq: value };
+  }
+}
 
 /**
  * DeleteBuilder<T> - A fluent query builder for constructing DELETE queries
@@ -31,17 +58,47 @@ export class DeleteBuilder<T> {
 
   /**
    * Add WHERE conditions to the query (AND)
+   * @overload where(conditions) - Add conditions object
+   * @overload where(column, operator, value) - Add single condition with operator
    */
-  where(conditions: WhereCondition<T>): DeleteBuilder<T> {
-    this._where = { ...this._where, ...conditions };
+  where(conditions: WhereCondition<T>): DeleteBuilder<T>;
+  where<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
+  where<K extends keyof T>(
+    conditionsOrColumn: WhereCondition<T> | K,
+    operator?: ComparisonOperator,
+    value?: T[K]
+  ): DeleteBuilder<T> {
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as where(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._where = { ...this._where, [conditionsOrColumn]: condition } as WhereCondition<T>;
+    } else {
+      // Called as where(conditions)
+      this._where = { ...this._where, ...(conditionsOrColumn as WhereCondition<T>) };
+    }
     return this;
   }
 
   /**
    * Add OR conditions to the query
+   * @overload orWhere(conditions) - Add conditions object
+   * @overload orWhere(column, operator, value) - Add single condition with operator
    */
-  orWhere(conditions: WhereCondition<T>): DeleteBuilder<T> {
-    this._orConditions.push(conditions);
+  orWhere(conditions: WhereCondition<T>): DeleteBuilder<T>;
+  orWhere<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
+  orWhere<K extends keyof T>(
+    conditionsOrColumn: WhereCondition<T> | K,
+    operator?: ComparisonOperator,
+    value?: T[K]
+  ): DeleteBuilder<T> {
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as orWhere(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._orConditions.push({ [conditionsOrColumn]: condition } as WhereCondition<T>);
+    } else {
+      // Called as orWhere(conditions)
+      this._orConditions.push(conditionsOrColumn as WhereCondition<T>);
+    }
     return this;
   }
 
