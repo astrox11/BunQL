@@ -1005,4 +1005,211 @@ describe("BunQL", () => {
       expect(sql).toContain("GROUP BY");
     });
   });
+
+  describe("DeleteBuilder", () => {
+    test("should support delete().where().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com", status: "active" });
+      User.insert({ email: "b@example.com", status: "inactive" });
+      User.insert({ email: "c@example.com", status: "active" });
+
+      const deletedCount = User.delete().where({ status: "inactive" }).run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+      expect(User.find({ status: "inactive" }).first()).toBeNull();
+    });
+
+    test("should support delete().where().orWhere().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ email: "a@example.com", status: "active", role: "admin" });
+      User.insert({ email: "b@example.com", status: "inactive", role: "user" });
+      User.insert({ email: "c@example.com", status: "active", role: "user" });
+      User.insert({ email: "d@example.com", status: "active", role: "guest" });
+
+      // Delete inactive users OR guests
+      const deletedCount = User.delete()
+        .where({ status: "inactive" })
+        .orWhere({ role: "guest" })
+        .run();
+      
+      expect(deletedCount).toBe(2);
+      expect(User.count()).toBe(2);
+      expect(User.find({ status: "inactive" }).first()).toBeNull();
+      expect(User.find({ role: "guest" }).first()).toBeNull();
+    });
+
+    test("should support delete() with advanced WHERE operators", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ name: "A", price: 5 });
+      Product.insert({ name: "B", price: 10 });
+      Product.insert({ name: "C", price: 15 });
+      Product.insert({ name: "D", price: 20 });
+
+      // Delete products with price < 12
+      const deletedCount = Product.delete().where({ price: { $lt: 12 } }).run();
+      
+      expect(deletedCount).toBe(2);
+      expect(Product.count()).toBe(2);
+    });
+
+    test("should support delete() with $in operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin" });
+      User.insert({ role: "user" });
+      User.insert({ role: "guest" });
+      User.insert({ role: "moderator" });
+
+      const deletedCount = User.delete().where({ role: { $in: ["guest", "user"] } }).run();
+      
+      expect(deletedCount).toBe(2);
+      expect(User.count()).toBe(2);
+      expect(User.find({ role: "admin" }).first()).not.toBeNull();
+      expect(User.find({ role: "moderator" }).first()).not.toBeNull();
+    });
+
+    test("should support delete() with LIMIT", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      // Only delete 2 inactive users
+      const deletedCount = User.delete().where({ status: "inactive" }).limit(2).run();
+      
+      expect(deletedCount).toBe(2);
+      expect(User.count()).toBe(2);
+      // One inactive user should remain
+      expect(User.find({ status: "inactive" }).count()).toBe(1);
+    });
+
+    test("should support delete() with orderBy and limit", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        created_at: { type: "INTEGER" },
+      });
+
+      User.insert({ name: "First", created_at: 100 });
+      User.insert({ name: "Second", created_at: 200 });
+      User.insert({ name: "Third", created_at: 300 });
+
+      // Delete the oldest user
+      const deletedCount = User.delete().orderBy("created_at", "ASC").limit(1).run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+      expect(User.find({ name: "First" }).first()).toBeNull();
+    });
+
+    test("should expose toSQL() for debugging", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      const { sql, params } = User.delete()
+        .where({ status: "inactive" })
+        .orWhere({ email: { $like: "%test%" } })
+        .limit(10)
+        .toSQL();
+
+      expect(sql).toContain("DELETE FROM");
+      expect(sql).toContain("WHERE");
+      expect(sql).toContain("OR");
+      expect(sql).toContain("LIMIT 10");
+      expect(params).toContain("inactive");
+      expect(params).toContain("%test%");
+    });
+
+    test("should preserve existing delete(where) behavior", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+      const deletedCount = User.delete({ email: "test@example.com" });
+      
+      expect(deletedCount).toBe(1);
+      expect(User.findById(1)).toBeNull();
+    });
+
+    test("should work with deleteById after changes", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+      const result = User.deleteById(1);
+      
+      expect(result).toBe(true);
+      expect(User.findById(1)).toBeNull();
+    });
+
+    test("should support multiple chained where conditions", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive", role: "admin" });
+      User.insert({ status: "inactive", role: "user" });
+      User.insert({ status: "active", role: "user" });
+
+      // Delete inactive users with role "user"
+      const deletedCount = User.delete()
+        .where({ status: "inactive" })
+        .where({ role: "user" })
+        .run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+    });
+
+    test("should delete all matching records without limit", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const deletedCount = User.delete().where({ status: "inactive" }).run();
+      
+      expect(deletedCount).toBe(3);
+      expect(User.count()).toBe(1);
+    });
+  });
 });

@@ -8,6 +8,7 @@ import type {
   WhereCondition,
 } from "./types";
 import { QueryBuilder } from "./query-builder";
+import { DeleteBuilder } from "./delete-builder";
 import { buildWhereClause } from "./where-builder";
 
 /**
@@ -161,9 +162,23 @@ export class Model<S extends SchemaDefinition> {
   }
 
   /**
-   * Delete records matching the WHERE conditions
+   * Delete records matching the WHERE conditions or return a DeleteBuilder for chaining
+   * @overload When called with no arguments, returns a DeleteBuilder for fluent chaining
+   * @overload When called with a WhereCondition, executes immediately and returns the count
    */
-  delete(where: WhereCondition<InferSchemaType<S>>): number {
+  delete(): DeleteBuilder<InferSchemaType<S>>;
+  delete(where: WhereCondition<InferSchemaType<S>>): number;
+  delete(where?: WhereCondition<InferSchemaType<S>>): DeleteBuilder<InferSchemaType<S>> | number {
+    // If no argument, return a DeleteBuilder for chaining
+    if (where === undefined) {
+      return new DeleteBuilder<InferSchemaType<S>>(
+        this.db,
+        this.tableName,
+        this.statementCache
+      );
+    }
+
+    // Otherwise, execute immediately (existing behavior)
     const whereKeys = Object.keys(where);
     const whereValues = Object.values(where) as SQLQueryBindings[];
     const whereConditions = whereKeys.map((k) => `"${k}" = ?`).join(" AND ");
@@ -187,7 +202,7 @@ export class Model<S extends SchemaDefinition> {
 
     const changes = this.delete({
       [this.primaryKey]: id,
-    } as WhereCondition<InferSchemaType<S>>);
+    } as WhereCondition<InferSchemaType<S>>) as number;
     return changes > 0;
   }
 
