@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { AggregateFunction, OrderBy, OrderDirection, SQLQueryBindings, WhereCondition } from "./types";
-import { buildCondition, buildWhereClause, isWhereOperator } from "./where-builder";
+import type { AggregateFunction, ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, WhereCondition } from "./types";
+import { buildCondition, buildWhereClause, isWhereOperator, operatorToCondition } from "./where-builder";
 
 /**
  * QueryBuilder<T> - A fluent query builder for constructing SQL queries
@@ -36,17 +36,47 @@ export class QueryBuilder<T> {
 
   /**
    * Add WHERE conditions to the query (AND)
+   * @overload where(conditions) - Add conditions object
+   * @overload where(column, operator, value) - Add single condition with operator
    */
-  where(conditions: WhereCondition<T>): QueryBuilder<T> {
-    this._where = { ...this._where, ...conditions };
+  where(conditions: WhereCondition<T>): QueryBuilder<T>;
+  where<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): QueryBuilder<T>;
+  where<K extends keyof T>(
+    conditionsOrColumn: WhereCondition<T> | K,
+    operator?: ComparisonOperator,
+    value?: T[K]
+  ): QueryBuilder<T> {
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as where(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._where = { ...this._where, [conditionsOrColumn]: condition } as WhereCondition<T>;
+    } else {
+      // Called as where(conditions)
+      this._where = { ...this._where, ...(conditionsOrColumn as WhereCondition<T>) };
+    }
     return this;
   }
 
   /**
    * Add OR conditions to the query
+   * @overload orWhere(conditions) - Add conditions object
+   * @overload orWhere(column, operator, value) - Add single condition with operator
    */
-  orWhere(conditions: WhereCondition<T>): QueryBuilder<T> {
-    this._orConditions.push(conditions);
+  orWhere(conditions: WhereCondition<T>): QueryBuilder<T>;
+  orWhere<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): QueryBuilder<T>;
+  orWhere<K extends keyof T>(
+    conditionsOrColumn: WhereCondition<T> | K,
+    operator?: ComparisonOperator,
+    value?: T[K]
+  ): QueryBuilder<T> {
+    if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
+      // Called as orWhere(column, operator, value)
+      const condition = operatorToCondition(operator, value);
+      this._orConditions.push({ [conditionsOrColumn]: condition } as WhereCondition<T>);
+    } else {
+      // Called as orWhere(conditions)
+      this._orConditions.push(conditionsOrColumn as WhereCondition<T>);
+    }
     return this;
   }
 
@@ -233,6 +263,13 @@ export class QueryBuilder<T> {
    * Execute query and return raw results (alias for all())
    */
   run(): T[] {
+    return this.all();
+  }
+
+  /**
+   * Execute query and return all matching rows (alias for all())
+   */
+  get(): T[] {
     return this.all();
   }
 

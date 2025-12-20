@@ -1696,4 +1696,330 @@ describe("BunQL", () => {
       expect(updated?.data).toBe(JSON.stringify({ value: "updated" }));
     });
   });
+
+  describe("SelectBuilder", () => {
+    test("should support select().where().get() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        lid: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", lid: "lid1" });
+      User.insert({ name: "Bob", lid: "lid2" });
+      User.insert({ name: "Charlie", lid: "lid1" });
+
+      const users = User.select().where("lid", "=", "lid1").get();
+      
+      expect(users).toHaveLength(2);
+      expect(users.map(u => u.name).sort()).toEqual(["Alice", "Charlie"]);
+    });
+
+    test("should support select().where().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active" });
+      User.insert({ name: "Bob", status: "inactive" });
+
+      const activeUsers = User.select().where("status", "=", "active").run();
+      
+      expect(activeUsers).toHaveLength(1);
+      expect(activeUsers[0].name).toBe("Alice");
+    });
+
+    test("should support select() with optional initial where", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", role: "admin" });
+      User.insert({ name: "Bob", role: "user" });
+      User.insert({ name: "Charlie", role: "admin" });
+
+      const admins = User.select({ role: "admin" }).get();
+      
+      expect(admins).toHaveLength(2);
+    });
+
+    test("should support chained where calls", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active", role: "admin" });
+      User.insert({ name: "Bob", status: "active", role: "user" });
+      User.insert({ name: "Charlie", status: "inactive", role: "admin" });
+
+      const results = User.select()
+        .where("status", "=", "active")
+        .where("role", "=", "admin")
+        .get();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Alice");
+    });
+
+    test("should support orWhere with column/operator/value syntax", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        pn: { type: "TEXT" },
+        lid: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", pn: "user1", lid: "lid1" });
+      User.insert({ name: "Bob", pn: "user2", lid: "lid2" });
+      User.insert({ name: "Charlie", pn: "user3", lid: "user1" }); // lid matches Alice's pn
+
+      // Select where pn = "user1" OR lid = "user1"
+      const results = User.select()
+        .where("pn", "=", "user1")
+        .orWhere("lid", "=", "user1")
+        .get();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(u => u.name).sort()).toEqual(["Alice", "Charlie"]);
+    });
+
+    test("should support comparison operators", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ name: "A", price: 10 });
+      Product.insert({ name: "B", price: 20 });
+      Product.insert({ name: "C", price: 30 });
+      Product.insert({ name: "D", price: 40 });
+
+      // Select products with price > 25
+      const results = Product.select().where("price", ">", 25).get();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(p => p.name).sort()).toEqual(["C", "D"]);
+    });
+
+    test("should support LIKE operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@gmail.com" });
+      User.insert({ email: "bob@yahoo.com" });
+      User.insert({ email: "charlie@gmail.com" });
+
+      const gmailUsers = User.select().where("email", "LIKE", "%gmail%").get();
+      
+      expect(gmailUsers).toHaveLength(2);
+    });
+
+    test("should support mixing object and column/operator/value where syntax", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active", role: "admin" });
+      User.insert({ name: "Bob", status: "inactive", role: "user" });
+      User.insert({ name: "Charlie", status: "active", role: "user" });
+
+      // Mix object and column/operator/value syntax
+      const results = User.select()
+        .where({ status: "inactive" })
+        .orWhere("role", "=", "admin")
+        .get();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(u => u.name).sort()).toEqual(["Alice", "Bob"]);
+    });
+
+    test("should support all terminal methods (get, run, all, first)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      // Test get()
+      const getResults = User.select().get();
+      expect(getResults).toHaveLength(2);
+
+      // Test run()
+      const runResults = User.select().run();
+      expect(runResults).toHaveLength(2);
+
+      // Test all()
+      const allResults = User.select().all();
+      expect(allResults).toHaveLength(2);
+
+      // Test first()
+      const firstResult = User.select().where("name", "=", "Alice").first();
+      expect(firstResult).not.toBeNull();
+      expect(firstResult?.name).toBe("Alice");
+    });
+
+    test("should support orderBy, limit, offset", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Charlie" });
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const results = User.select()
+        .orderBy("name", "ASC")
+        .limit(2)
+        .offset(1)
+        .get();
+      
+      expect(results).toHaveLength(2);
+      expect(results[0].name).toBe("Bob");
+      expect(results[1].name).toBe("Charlie");
+    });
+
+    test("should support advanced WHERE operators with select()", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ name: "A", price: 5 });
+      Product.insert({ name: "B", price: 10 });
+      Product.insert({ name: "C", price: 15 });
+      Product.insert({ name: "D", price: 20 });
+
+      // Mix column/operator/value with object syntax containing operators
+      const results = Product.select()
+        .where({ price: { $gte: 10, $lt: 20 } })
+        .get();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(p => p.name).sort()).toEqual(["B", "C"]);
+    });
+
+    test("should work with the exact pattern from the issue", () => {
+      // This test validates the exact use case from the issue:
+      // const users = Ban.select().where("lid", "=", id).get();
+      
+      const Ban = ql.define("ban", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        lid: { type: "TEXT" },
+        reason: { type: "TEXT" },
+      });
+
+      Ban.insert({ lid: "lid1", reason: "spam" });
+      Ban.insert({ lid: "lid2", reason: "abuse" });
+      Ban.insert({ lid: "lid1", reason: "test" });
+
+      const targetLid = "lid1";
+      const users = Ban.select().where("lid", "=", targetLid).get();
+
+      expect(users).toHaveLength(2);
+      expect(users.every(u => u.lid === "lid1")).toBe(true);
+    });
+
+    test("should support != operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const results = User.select().where("status", "!=", "active").get();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].status).toBe("inactive");
+    });
+
+    test("should support <> operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const results = User.select().where("status", "<>", "active").get();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].status).toBe("inactive");
+    });
+
+    test("should support >= and <= operators", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ price: 10 });
+      Product.insert({ price: 20 });
+      Product.insert({ price: 30 });
+
+      const gteResults = Product.select().where("price", ">=", 20).get();
+      expect(gteResults).toHaveLength(2);
+
+      const lteResults = Product.select().where("price", "<=", 20).get();
+      expect(lteResults).toHaveLength(2);
+    });
+
+    test("should support NOT LIKE operator", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "alice@gmail.com" });
+      User.insert({ email: "bob@yahoo.com" });
+      User.insert({ email: "charlie@gmail.com" });
+
+      const nonGmailUsers = User.select().where("email", "NOT LIKE", "%gmail%").get();
+      
+      expect(nonGmailUsers).toHaveLength(1);
+      expect(nonGmailUsers[0].email).toBe("bob@yahoo.com");
+    });
+
+    test("should expose toSQL() for debugging", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      const { sql, params } = User.select()
+        .where("status", "=", "inactive")
+        .orWhere("email", "LIKE", "%test%")
+        .limit(10)
+        .toSQL();
+
+      expect(sql).toContain("SELECT");
+      expect(sql).toContain("WHERE");
+      expect(sql).toContain("OR");
+      expect(sql).toContain("LIMIT 10");
+      expect(params).toContain("inactive");
+      expect(params).toContain("%test%");
+    });
+  });
 });
