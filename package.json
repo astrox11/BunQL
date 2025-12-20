@@ -1,6 +1,6 @@
 {
   "name": "@realastrox11/bunql",
-  "version": "0.0.8",
+  "version": "1.0.0",
   "description": "A minimal high performance ORM for Bun using bun:sqlite",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -14,6 +14,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target bun && tsc -p tsconfig.build.json",
+    "release": "bun run build && npm publish",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
@@ -24,7 +25,7 @@
     "database",
     "sql"
   ],
-  "author": "",
+  "author": "astrox11",
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
