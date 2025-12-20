@@ -29,14 +29,18 @@
  * // Update
  * User.update({ email: "a@mail.com" }, { username: "alice_updated" });
  * 
- * // Delete
+ * // Delete (immediate execution)
  * User.delete({ email: "a@mail.com" });
+ * 
+ * // Delete (builder pattern)
+ * User.delete().where({ status: "inactive" }).orWhere({ expired: true }).run();
  * ```
  */
 
 export { BunQL } from "./bunql";
 export { Model } from "./model";
 export { QueryBuilder } from "./query-builder";
+export { DeleteBuilder } from "./delete-builder";
 
 export type {
   AdvancedWhereCondition,
