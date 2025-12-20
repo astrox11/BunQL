@@ -10,6 +10,7 @@ import type {
 import { QueryBuilder } from "./query-builder";
 import { DeleteBuilder } from "./delete-builder";
 import { UpdateBuilder } from "./update-builder";
+import { InsertBuilder } from "./insert-builder";
 import { buildWhereClause } from "./where-builder";
 
 /**
@@ -99,7 +100,7 @@ export class Model<S extends SchemaDefinition> {
   }
 
   /**
-   * Insert a new record
+   * Insert a new record (immediate execution)
    */
   insert(data: Partial<InferSchemaType<S>>): InferSchemaType<S> {
     const keys = Object.keys(data);
@@ -122,6 +123,35 @@ export class Model<S extends SchemaDefinition> {
 
     // If no primary key, return the inserted data merged with defaults
     return { ...data } as InferSchemaType<S>;
+  }
+
+  /**
+   * Create an InsertBuilder for fluent chaining with options like ifNotExists, orIgnore, orReplace
+   * @example
+   * // Insert with existence check (avoids UNIQUE constraint errors)
+   * const user = User.insertBuilder({ email: "test@example.com", name: "Test" })
+   *   .ifNotExists({ email: "test@example.com" })
+   *   .run();
+   * 
+   * // Insert with OR IGNORE (silently skip on conflict)
+   * const user = User.insertBuilder({ email: "test@example.com", name: "Test" })
+   *   .orIgnore()
+   *   .run();
+   * 
+   * // Insert with OR REPLACE (replace on conflict)
+   * const user = User.insertBuilder({ email: "test@example.com", name: "Test" })
+   *   .orReplace()
+   *   .run();
+   */
+  insertBuilder(data: Partial<InferSchemaType<S>>): InsertBuilder<InferSchemaType<S>, S> {
+    return new InsertBuilder<InferSchemaType<S>, S>(
+      this.db,
+      this.tableName,
+      this.statementCache,
+      data,
+      this.schema,
+      this.primaryKey
+    );
   }
 
   /**

@@ -21,6 +21,11 @@
  * // Insert a new user
  * const user = User.insert({ email: "a@mail.com", username: "alice", created_at: Date.now() });
  * 
+ * // Insert with existence check (avoids UNIQUE constraint errors)
+ * const user2 = User.insertBuilder({ email: "a@mail.com", username: "alice" })
+ *   .ifNotExists({ email: "a@mail.com" })
+ *   .run();
+ * 
  * // Query users
  * const found = User.find({ email: "a@mail.com" }).first();
  * const all = User.find().all();
@@ -45,6 +50,8 @@ export { Model } from "./model";
 export { QueryBuilder } from "./query-builder";
 export { DeleteBuilder } from "./delete-builder";
 export { UpdateBuilder } from "./update-builder";
+export { InsertBuilder } from "./insert-builder";
+export type { ConflictResolution } from "./insert-builder";
 
 export type {
   AdvancedWhereCondition,
