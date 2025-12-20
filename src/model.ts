@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { QueryBuilder } from "./query-builder";
 import { DeleteBuilder } from "./delete-builder";
+import { UpdateBuilder } from "./update-builder";
 import { buildWhereClause } from "./where-builder";
 
 /**
@@ -120,12 +121,28 @@ export class Model<S extends SchemaDefinition> {
   }
 
   /**
-   * Update records matching the WHERE conditions
+   * Update records matching the WHERE conditions or return an UpdateBuilder for chaining
+   * @overload When called with just data, returns an UpdateBuilder for fluent chaining
+   * @overload When called with a WhereCondition and data, executes immediately and returns the count
    */
+  update(data: UpdateData<InferSchemaType<S>>): UpdateBuilder<InferSchemaType<S>>;
+  update(where: WhereCondition<InferSchemaType<S>>, data: UpdateData<InferSchemaType<S>>): number;
   update(
-    where: WhereCondition<InferSchemaType<S>>,
-    data: UpdateData<InferSchemaType<S>>
-  ): number {
+    whereOrData: WhereCondition<InferSchemaType<S>> | UpdateData<InferSchemaType<S>>,
+    data?: UpdateData<InferSchemaType<S>>
+  ): UpdateBuilder<InferSchemaType<S>> | number {
+    // If only one argument, return an UpdateBuilder for chaining
+    if (data === undefined) {
+      return new UpdateBuilder<InferSchemaType<S>>(
+        this.db,
+        this.tableName,
+        this.statementCache,
+        whereOrData as UpdateData<InferSchemaType<S>>
+      );
+    }
+
+    // Otherwise, execute immediately (existing behavior)
+    const where = whereOrData as WhereCondition<InferSchemaType<S>>;
     const updateKeys = Object.keys(data);
     const updateValues = Object.values(data) as SQLQueryBindings[];
     const setClauses = updateKeys.map((k) => `"${k}" = ?`).join(", ");

@@ -1,14 +1,15 @@
 import type { Database } from "bun:sqlite";
-import type { ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, WhereCondition, WhereOperator } from "./types";
+import type { ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, UpdateData, WhereCondition, WhereOperator } from "./types";
 import { buildWhereClause, operatorToCondition } from "./where-builder";
 
 /**
- * DeleteBuilder<T> - A fluent query builder for constructing DELETE queries
+ * UpdateBuilder<T> - A fluent query builder for constructing UPDATE queries
  * Queries are only executed when .run() is called
  */
-export class DeleteBuilder<T> {
+export class UpdateBuilder<T> {
   private db: Database;
   private tableName: string;
+  private _data: UpdateData<T>;
   private _where: WhereCondition<T> = {};
   private _orConditions: WhereCondition<T>[] = [];
   private _orderBy: OrderBy<T>[] = [];
@@ -19,11 +20,13 @@ export class DeleteBuilder<T> {
     db: Database,
     tableName: string,
     statementCache: Map<string, ReturnType<Database["prepare"]>>,
+    data: UpdateData<T>,
     initialWhere?: WhereCondition<T>
   ) {
     this.db = db;
     this.tableName = tableName;
     this.statementCache = statementCache;
+    this._data = data;
     if (initialWhere) {
       this._where = { ...initialWhere };
     }
@@ -34,13 +37,13 @@ export class DeleteBuilder<T> {
    * @overload where(conditions) - Add conditions object
    * @overload where(column, operator, value) - Add single condition with operator
    */
-  where(conditions: WhereCondition<T>): DeleteBuilder<T>;
-  where<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
+  where(conditions: WhereCondition<T>): UpdateBuilder<T>;
+  where<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): UpdateBuilder<T>;
   where<K extends keyof T>(
     conditionsOrColumn: WhereCondition<T> | K,
     operator?: ComparisonOperator,
     value?: T[K]
-  ): DeleteBuilder<T> {
+  ): UpdateBuilder<T> {
     if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
       // Called as where(column, operator, value)
       const condition = operatorToCondition(operator, value);
@@ -57,13 +60,13 @@ export class DeleteBuilder<T> {
    * @overload orWhere(conditions) - Add conditions object
    * @overload orWhere(column, operator, value) - Add single condition with operator
    */
-  orWhere(conditions: WhereCondition<T>): DeleteBuilder<T>;
-  orWhere<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): DeleteBuilder<T>;
+  orWhere(conditions: WhereCondition<T>): UpdateBuilder<T>;
+  orWhere<K extends keyof T>(column: K, operator: ComparisonOperator, value: T[K]): UpdateBuilder<T>;
   orWhere<K extends keyof T>(
     conditionsOrColumn: WhereCondition<T> | K,
     operator?: ComparisonOperator,
     value?: T[K]
-  ): DeleteBuilder<T> {
+  ): UpdateBuilder<T> {
     if (typeof conditionsOrColumn === "string" && operator !== undefined && value !== undefined) {
       // Called as orWhere(column, operator, value)
       const condition = operatorToCondition(operator, value);
@@ -76,17 +79,17 @@ export class DeleteBuilder<T> {
   }
 
   /**
-   * Add ORDER BY clause to the query (SQLite supports ORDER BY in DELETE with LIMIT)
+   * Add ORDER BY clause to the query (SQLite supports ORDER BY in UPDATE with LIMIT)
    */
-  orderBy(column: keyof T, direction: OrderDirection = "ASC"): DeleteBuilder<T> {
+  orderBy(column: keyof T, direction: OrderDirection = "ASC"): UpdateBuilder<T> {
     this._orderBy.push({ column, direction });
     return this;
   }
 
   /**
-   * Set LIMIT for the query (SQLite supports LIMIT in DELETE)
+   * Set LIMIT for the query (SQLite supports LIMIT in UPDATE)
    */
-  limit(count: number): DeleteBuilder<T> {
+  limit(count: number): UpdateBuilder<T> {
     this._limit = count;
     return this;
   }
@@ -96,7 +99,14 @@ export class DeleteBuilder<T> {
    */
   private buildQuery(): { sql: string; params: SQLQueryBindings[] } {
     const params: SQLQueryBindings[] = [];
-    let sql = `DELETE FROM "${this.tableName}"`;
+    
+    // Build SET clause
+    const updateKeys = Object.keys(this._data);
+    const updateValues = Object.values(this._data) as SQLQueryBindings[];
+    const setClauses = updateKeys.map((k) => `"${k}" = ?`).join(", ");
+    params.push(...updateValues);
+
+    let sql = `UPDATE "${this.tableName}" SET ${setClauses}`;
 
     // WHERE clause
     const whereClause = buildWhereClause(this._where, params);
@@ -147,7 +157,7 @@ export class DeleteBuilder<T> {
   }
 
   /**
-   * Execute the DELETE query and return the number of deleted records
+   * Execute the UPDATE query and return the number of updated records
    */
   run(): number {
     const { sql, params } = this.buildQuery();
