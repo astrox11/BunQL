@@ -47,6 +47,25 @@ const user = User.insert({
 const found = User.find({ email: "a@mail.com" }).first();
 const allUsers = User.all();
 
+// Fluent Select Query Builder
+const users = User.select()
+  .where("email", "LIKE", "%@mail.com")
+  .orderBy("username", "ASC")
+  .limit(10)
+  .get();
+
+// Chained conditions
+const activeAdmins = User.select()
+  .where("status", "=", "active")
+  .where("role", "=", "admin")
+  .get();
+
+// OR conditions
+const results = User.select()
+  .where("status", "=", "inactive")
+  .orWhere("role", "=", "guest")
+  .get();
+
 // Update
 User.updateById(1, { username: "alice_updated" });
 
