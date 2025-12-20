@@ -2322,4 +2322,279 @@ describe("BunQL", () => {
       expect(User.count()).toBe(3);
     });
   });
+
+  describe("Model.query() method", () => {
+    test("should support query().where(column, value).first() pattern from the issue", () => {
+      // This test validates the exact use case from the issue:
+      // const contact = Contact.query().where("lid", lid).first();
+      // return contact?.pn || null;
+      
+      const Contact = ql.define("contact", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        lid: { type: "TEXT" },
+        pn: { type: "TEXT" },
+      });
+
+      Contact.insert({ lid: "lid1", pn: "phone1" });
+      Contact.insert({ lid: "lid2", pn: "phone2" });
+      Contact.insert({ lid: "lid3", pn: "phone3" });
+
+      // Exact pattern from the issue
+      const getPnByLid = (lid: string) => {
+        const contact = Contact.query().where("lid", lid).first();
+        return contact?.pn || null;
+      };
+
+      expect(getPnByLid("lid1")).toBe("phone1");
+      expect(getPnByLid("lid2")).toBe("phone2");
+      expect(getPnByLid("lid3")).toBe("phone3");
+      expect(getPnByLid("nonexistent")).toBeNull();
+    });
+
+    test("should support query().where(column, value).all() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active", name: "Alice" });
+      User.insert({ status: "active", name: "Bob" });
+      User.insert({ status: "inactive", name: "Charlie" });
+
+      const activeUsers = User.query().where("status", "active").all();
+      
+      expect(activeUsers).toHaveLength(2);
+      expect(activeUsers.map(u => u.name).sort()).toEqual(["Alice", "Bob"]);
+    });
+
+    test("should support query() with initial where condition", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        role: { type: "TEXT" },
+      });
+
+      User.insert({ role: "admin" });
+      User.insert({ role: "user" });
+      User.insert({ role: "admin" });
+
+      const admins = User.query({ role: "admin" }).all();
+      
+      expect(admins).toHaveLength(2);
+    });
+
+    test("should support chained where(column, value) calls", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+        role: { type: "TEXT" },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active", role: "admin", name: "Alice" });
+      User.insert({ status: "active", role: "user", name: "Bob" });
+      User.insert({ status: "inactive", role: "admin", name: "Charlie" });
+
+      const activeAdmins = User.query()
+        .where("status", "active")
+        .where("role", "admin")
+        .all();
+      
+      expect(activeAdmins).toHaveLength(1);
+      expect(activeAdmins[0].name).toBe("Alice");
+    });
+
+    test("should support query().where(column, value).orWhere(column, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        pn: { type: "TEXT" },
+        lid: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", pn: "user1", lid: "lid1" });
+      User.insert({ name: "Bob", pn: "user2", lid: "lid2" });
+      User.insert({ name: "Charlie", pn: "user3", lid: "user1" }); // lid matches Alice's pn
+
+      // Select where pn = "user1" OR lid = "user1"
+      const results = User.query()
+        .where("pn", "user1")
+        .orWhere("lid", "user1")
+        .all();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(u => u.name).sort()).toEqual(["Alice", "Charlie"]);
+    });
+
+    test("should support query() with orderBy, limit, offset", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Charlie" });
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const results = User.query()
+        .orderBy("name", "ASC")
+        .limit(2)
+        .offset(1)
+        .all();
+      
+      expect(results).toHaveLength(2);
+      expect(results[0].name).toBe("Bob");
+      expect(results[1].name).toBe("Charlie");
+    });
+
+    test("should support query().where(column, value) with get() terminal method", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+
+      const results = User.query().where("email", "test@example.com").get();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].email).toBe("test@example.com");
+    });
+
+    test("should support query().where(column, value) with run() terminal method", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ email: "test@example.com" });
+
+      const results = User.query().where("email", "test@example.com").run();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].email).toBe("test@example.com");
+    });
+
+    test("should support mixing where(column, value) and where(column, operator, value)", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        category: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ category: "electronics", price: 100 });
+      Product.insert({ category: "electronics", price: 200 });
+      Product.insert({ category: "clothing", price: 50 });
+
+      const results = Product.query()
+        .where("category", "electronics")
+        .where("price", ">", 150)
+        .all();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].price).toBe(200);
+    });
+  });
+
+  describe("Simplified where(column, value) syntax", () => {
+    test("should work with select().where(column, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const results = User.select().where("name", "Alice").get();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Alice");
+    });
+
+    test("should work with find().where(column, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+
+      const results = User.find().where("status", "active").all();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].status).toBe("active");
+    });
+
+    test("should work with delete().where(column, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ status: "active" });
+      User.insert({ status: "inactive" });
+      User.insert({ status: "active" });
+
+      const deletedCount = User.delete().where("status", "inactive").run();
+      
+      expect(deletedCount).toBe(1);
+      expect(User.count()).toBe(2);
+      expect(User.find({ status: "inactive" }).first()).toBeNull();
+    });
+
+    test("should work with update().where(column, value)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active" });
+      User.insert({ name: "Bob", status: "inactive" });
+
+      const updatedCount = User.update({ status: "archived" }).where("name", "Bob").run();
+      
+      expect(updatedCount).toBe(1);
+      expect(User.find({ name: "Bob" }).first()?.status).toBe("archived");
+    });
+
+    test("should support orWhere(column, value) shorthand", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+      User.insert({ name: "Charlie" });
+
+      const results = User.query()
+        .where("name", "Alice")
+        .orWhere("name", "Charlie")
+        .all();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(u => u.name).sort()).toEqual(["Alice", "Charlie"]);
+    });
+
+    test("should work correctly when value looks like an operator", () => {
+      const Item = ql.define("item", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        value: { type: "TEXT" },
+      });
+
+      // Insert items with values that look like SQL operators
+      Item.insert({ value: "=" });
+      Item.insert({ value: ">" });
+      Item.insert({ value: "normal" });
+
+      // Should match exactly the "=" value, not interpret it as an operator
+      const results = Item.query().where("value", "=").all();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].value).toBe("=");
+    });
+  });
 });

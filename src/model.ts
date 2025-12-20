@@ -87,6 +87,24 @@ export class Model<S extends SchemaDefinition> {
   }
 
   /**
+   * Create a QueryBuilder for SELECT queries with fluent chaining
+   * Alias for select() method, providing a more intuitive API for querying
+   * @example
+   * const contact = Contact.query().where("lid", lid).first();
+   * const users = User.query().where("status", "active").all();
+   */
+  query(
+    where?: WhereCondition<InferSchemaType<S>>
+  ): QueryBuilder<InferSchemaType<S>> {
+    return new QueryBuilder<InferSchemaType<S>>(
+      this.db,
+      this.tableName,
+      this.statementCache,
+      where
+    );
+  }
+
+  /**
    * Find a record by its primary key
    */
   findById(id: number | string): InferSchemaType<S> | null {
