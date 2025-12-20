@@ -140,7 +140,8 @@ export class InsertBuilder<T, S extends SchemaDefinition = SchemaDefinition> {
     stmt.run(...params);
 
     // Check if any row was affected (for OR IGNORE case)
-    const changes = (this.db.query("SELECT changes() as count").get() as { count: number }).count;
+    const changesStmt = this.getStatement("SELECT changes() as count");
+    const changes = (changesStmt.get() as { count: number }).count;
     
     if (changes === 0) {
       // No row was inserted (could be due to OR IGNORE)
@@ -148,9 +149,8 @@ export class InsertBuilder<T, S extends SchemaDefinition = SchemaDefinition> {
     }
 
     // Get the last inserted row
-    const lastId = this.db.query("SELECT last_insert_rowid() as id").get() as {
-      id: number;
-    };
+    const lastIdStmt = this.getStatement("SELECT last_insert_rowid() as id");
+    const lastId = lastIdStmt.get() as { id: number };
 
     if (this.primaryKey) {
       return this.findById(lastId.id);
