@@ -1,6 +1,6 @@
 {
   "name": "@realastrox11/bunql",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A minimal high performance ORM for Bun using bun:sqlite",
   "main": "dist/index.js",
   "module": "dist/index.js",
