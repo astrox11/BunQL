@@ -37,7 +37,6 @@ export class QueryBuilder<T> {
   /**
    * Add WHERE conditions to the query (AND)
    * @overload where(conditions) - Add conditions object
-   * @overload where(conditions) - Add conditions object
    * @overload where(column, operator, value) - Add single condition with operator
    * @overload where(column, value) - Add single equality condition (shorthand for where(column, "=", value))
    */
