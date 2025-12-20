@@ -2022,4 +2022,304 @@ describe("BunQL", () => {
       expect(params).toContain("%test%");
     });
   });
+
+  describe("InsertBuilder", () => {
+    test("should support basic insertBuilder().run() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      const inserted = User.insertBuilder({
+        email: "test@example.com",
+        username: "testuser",
+      }).run();
+
+      expect(inserted).not.toBeNull();
+      expect(inserted?.id).toBe(1);
+      expect(inserted?.email).toBe("test@example.com");
+      expect(inserted?.username).toBe("testuser");
+    });
+
+    test("should support ifNotExists() to check for existing records", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // First insert should succeed
+      const first = User.insertBuilder({ email: "test@example.com", username: "first" })
+        .ifNotExists({ email: "test@example.com" })
+        .run();
+
+      expect(first).not.toBeNull();
+      expect(first?.username).toBe("first");
+      expect(User.count()).toBe(1);
+
+      // Second insert with same email should be skipped (returns null)
+      const second = User.insertBuilder({ email: "test@example.com", username: "second" })
+        .ifNotExists({ email: "test@example.com" })
+        .run();
+
+      expect(second).toBeNull();
+      expect(User.count()).toBe(1);
+      // Original record should remain unchanged
+      expect(User.findById(1)?.username).toBe("first");
+    });
+
+    test("should support orIgnore() to silently skip on UNIQUE constraint violation", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // First insert should succeed
+      const first = User.insert({ email: "test@example.com", username: "first" });
+      expect(first.id).toBe(1);
+
+      // Second insert with orIgnore should silently skip
+      const second = User.insertBuilder({ email: "test@example.com", username: "second" })
+        .orIgnore()
+        .run();
+
+      expect(second).toBeNull(); // Returns null since insert was skipped
+      expect(User.count()).toBe(1);
+      expect(User.findById(1)?.username).toBe("first"); // Original unchanged
+    });
+
+    test("should support orReplace() to replace on UNIQUE constraint violation", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // First insert
+      User.insert({ email: "test@example.com", username: "first" });
+      expect(User.count()).toBe(1);
+
+      // Second insert with orReplace should replace the existing record
+      const replaced = User.insertBuilder({ email: "test@example.com", username: "replaced" })
+        .orReplace()
+        .run();
+
+      expect(replaced).not.toBeNull();
+      expect(replaced?.username).toBe("replaced");
+      expect(User.count()).toBe(1);
+    });
+
+    test("should expose toSQL() for debugging", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      const { sql, params } = User.insertBuilder({ email: "test@example.com", username: "testuser" }).toSQL();
+
+      expect(sql).toContain("INSERT INTO");
+      expect(sql).toContain('"email"');
+      expect(sql).toContain('"username"');
+      expect(params).toContain("test@example.com");
+      expect(params).toContain("testuser");
+    });
+
+    test("should generate correct SQL for orIgnore", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+      });
+
+      const { sql } = User.insertBuilder({ email: "test@example.com" }).orIgnore().toSQL();
+
+      expect(sql).toContain("INSERT OR IGNORE");
+    });
+
+    test("should generate correct SQL for orReplace", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+      });
+
+      const { sql } = User.insertBuilder({ email: "test@example.com" }).orReplace().toSQL();
+
+      expect(sql).toContain("INSERT OR REPLACE");
+    });
+
+    test("should preserve existing insert() behavior", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      const inserted = User.insert({
+        email: "test@example.com",
+        username: "testuser",
+      });
+
+      expect(inserted.id).toBe(1);
+      expect(inserted.email).toBe("test@example.com");
+    });
+
+    test("should handle ifNotExists with advanced WHERE operators", () => {
+      const Product = ql.define("product", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        sku: { type: "TEXT", unique: true },
+        name: { type: "TEXT" },
+        price: { type: "REAL" },
+      });
+
+      Product.insert({ sku: "ABC123", name: "Product A", price: 10 });
+
+      // Try to insert with same SKU - should be skipped
+      const result = Product.insertBuilder({ sku: "ABC123", name: "Product B", price: 20 })
+        .ifNotExists({ sku: "ABC123" })
+        .run();
+
+      expect(result).toBeNull();
+      expect(Product.count()).toBe(1);
+
+      // Insert with different SKU - should succeed
+      const newProduct = Product.insertBuilder({ sku: "DEF456", name: "Product C", price: 30 })
+        .ifNotExists({ sku: "DEF456" })
+        .run();
+
+      expect(newProduct).not.toBeNull();
+      expect(newProduct?.sku).toBe("DEF456");
+      expect(Product.count()).toBe(2);
+    });
+
+    test("should work without primary key", () => {
+      const Log = ql.define("log", {
+        message: { type: "TEXT" },
+        level: { type: "TEXT" },
+        timestamp: { type: "INTEGER" },
+      });
+
+      const inserted = Log.insertBuilder({
+        message: "Test log",
+        level: "info",
+        timestamp: Date.now(),
+      }).run();
+
+      expect(inserted).not.toBeNull();
+      expect(inserted?.message).toBe("Test log");
+      expect(inserted?.level).toBe("info");
+    });
+
+    test("should avoid UNIQUE constraint error with ifNotExists", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // Insert first user
+      User.insert({ email: "duplicate@example.com", username: "first" });
+
+      // Without ifNotExists, this would throw a UNIQUE constraint error
+      // With ifNotExists, it safely returns null
+      const result = User.insertBuilder({ email: "duplicate@example.com", username: "second" })
+        .ifNotExists({ email: "duplicate@example.com" })
+        .run();
+
+      expect(result).toBeNull();
+      expect(User.count()).toBe(1);
+    });
+
+    test("should avoid UNIQUE constraint error with orIgnore", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // Insert first user
+      User.insert({ email: "duplicate@example.com", username: "first" });
+
+      // Without orIgnore, this would throw a UNIQUE constraint error
+      // With orIgnore, it safely returns null
+      const result = User.insertBuilder({ email: "duplicate@example.com", username: "second" })
+        .orIgnore()
+        .run();
+
+      expect(result).toBeNull();
+      expect(User.count()).toBe(1);
+    });
+
+    test("should support chaining multiple options (though only last conflict resolution applies)", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // Insert first user
+      User.insert({ email: "test@example.com", username: "first" });
+
+      // Chain ifNotExists followed by orIgnore - both should work
+      const result = User.insertBuilder({ email: "test@example.com", username: "second" })
+        .ifNotExists({ email: "test@example.com" })
+        .run();
+
+      expect(result).toBeNull();
+      expect(User.count()).toBe(1);
+    });
+
+    test("should work with the exact pattern from the issue - check if already exists", () => {
+      // This test validates the exact use case from the issue:
+      // Check if already exists to avoid UNIQUE constraint error during insert operation
+      
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT", unique: true },
+        username: { type: "TEXT" },
+      });
+
+      // First insert
+      User.insert({ email: "existing@example.com", username: "existing" });
+
+      // Try to insert same email without checking - would fail with UNIQUE constraint error
+      // Using insertBuilder with ifNotExists prevents this error
+      const safeInsert = User.insertBuilder({ email: "existing@example.com", username: "newuser" })
+        .ifNotExists({ email: "existing@example.com" })
+        .run();
+
+      // Returns null because record already exists
+      expect(safeInsert).toBeNull();
+      // Original record is unchanged
+      expect(User.findById(1)?.username).toBe("existing");
+      // No duplicate was created
+      expect(User.count()).toBe(1);
+
+      // New email should still work
+      const newInsert = User.insertBuilder({ email: "new@example.com", username: "newuser" })
+        .ifNotExists({ email: "new@example.com" })
+        .run();
+
+      expect(newInsert).not.toBeNull();
+      expect(newInsert?.email).toBe("new@example.com");
+      expect(User.count()).toBe(2);
+    });
+
+    test("should work with insertMany after adding insertBuilder", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        email: { type: "TEXT" },
+      });
+
+      const results = User.insertMany([
+        { email: "a@example.com" },
+        { email: "b@example.com" },
+        { email: "c@example.com" },
+      ]);
+
+      expect(results).toHaveLength(3);
+      expect(User.count()).toBe(3);
+    });
+  });
 });
