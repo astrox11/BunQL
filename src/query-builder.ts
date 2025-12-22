@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite";
-import type { AggregateFunction, ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, WhereCondition } from "./types";
+import type { AggregateFunction, ComparisonOperator, OrderBy, OrderDirection, SQLQueryBindings, UpdateData, WhereCondition } from "./types";
 import { buildCondition, buildWhereClause, isWhereOperator, operatorToCondition } from "./where-builder";
+import { createResultProxy, ResultProxy } from "./result-proxy";
 
 /**
  * QueryBuilder<T> - A fluent query builder for constructing SQL queries
  * Queries are only executed when .all(), .first(), or .run() are called
  */
-export class QueryBuilder<T> {
+export class QueryBuilder<T extends Record<string, unknown>> {
   private db: Database;
   private tableName: string;
   private _where: WhereCondition<T> = {};
@@ -19,16 +20,19 @@ export class QueryBuilder<T> {
   private _groupBy: (keyof T)[] = [];
   private _having: WhereCondition<T> = {};
   private statementCache: Map<string, ReturnType<Database["prepare"]>>;
+  private primaryKey: string | null;
 
   constructor(
     db: Database,
     tableName: string,
     statementCache: Map<string, ReturnType<Database["prepare"]>>,
-    initialWhere?: WhereCondition<T>
+    initialWhere?: WhereCondition<T>,
+    primaryKey?: string | null
   ) {
     this.db = db;
     this.tableName = tableName;
     this.statementCache = statementCache;
+    this.primaryKey = primaryKey ?? null;
     if (initialWhere) {
       this._where = { ...initialWhere };
     }
@@ -219,19 +223,27 @@ export class QueryBuilder<T> {
   }
 
   /**
-   * Execute query and return the first matching row
+   * Execute query and return the first matching row with chainable methods
+   * The result has both the data properties AND methods like delete(), update(), save()
+   * @example
+   * const user = User.query().where("id", "=", 1).first();
+   * user?.name; // Access property
+   * user?.delete(); // Delete the record
+   * user?.update({ name: "New Name" }); // Update the record
    */
-  first(): T | null {
+  first(): (T & ResultProxy<T>) | null {
     this._limit = 1;
     const { sql, params } = this.buildQuery();
     const stmt = this.getStatement(sql);
-    return (stmt.get(...params) as T) || null;
+    const data = (stmt.get(...params) as T) || null;
+    return createResultProxy<T>(this.db, this.tableName, this.statementCache, this.primaryKey, data);
   }
 
   /**
    * Execute query and return the first matching row or throw an error
+   * The result has both the data properties AND methods like delete(), update(), save()
    */
-  firstOrFail(): T {
+  firstOrFail(): T & ResultProxy<T> {
     const result = this.first();
     if (result === null) {
       throw new Error(`No record found in table "${this.tableName}"`);

@@ -2526,4 +2526,383 @@ describe("BunQL", () => {
       expect(results[0].status).toBe("inactive");
     });
   });
+
+  describe("ResultProxy - chainable methods on results", () => {
+    test("should support first().delete() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        active: { type: "INTEGER" },
+      });
+
+      User.insert({ name: "Alice", active: 1 });
+      User.insert({ name: "Bob", active: 0 });
+      User.insert({ name: "Charlie", active: 1 });
+
+      // Get the first inactive user and delete them
+      const user = User.query().where("active", "=", 0).first();
+      expect(user).not.toBeNull();
+      expect(user?.name).toBe("Bob");
+      
+      // Delete the user using the chainable method
+      const deletedCount = user?.delete();
+      expect(deletedCount).toBe(1);
+      
+      // Verify the user was deleted
+      expect(User.count()).toBe(2);
+      expect(User.find({ name: "Bob" }).first()).toBeNull();
+    });
+
+    test("should support first().update() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active" });
+      User.insert({ name: "Bob", status: "inactive" });
+
+      // Get the first inactive user and update them
+      const user = User.query().where("status", "=", "inactive").first();
+      expect(user).not.toBeNull();
+      expect(user?.name).toBe("Bob");
+      
+      // Update the user using the chainable method
+      const updatedCount = user?.update({ status: "active" });
+      expect(updatedCount).toBe(1);
+      
+      // Verify the user was updated
+      const updated = User.findById(2);
+      expect(updated?.status).toBe("active");
+    });
+
+    test("should support property access on first() result", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", email: "alice@example.com" });
+
+      const user = User.query().where("name", "=", "Alice").first();
+      
+      // Can access properties directly
+      expect(user?.id).toBe(1);
+      expect(user?.name).toBe("Alice");
+      expect(user?.email).toBe("alice@example.com");
+    });
+
+    test("should support findById().delete() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      // Get user by ID and delete
+      const user = User.findById(1);
+      expect(user).not.toBeNull();
+      expect(user?.name).toBe("Alice");
+      
+      const deletedCount = user?.delete();
+      expect(deletedCount).toBe(1);
+      
+      expect(User.count()).toBe(1);
+      expect(User.findById(1)).toBeNull();
+    });
+
+    test("should support findById().update() pattern", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const user = User.findById(1);
+      expect(user?.name).toBe("Alice");
+      
+      const updatedCount = user?.update({ name: "Alice Updated" });
+      expect(updatedCount).toBe(1);
+      
+      const updated = User.findById(1);
+      expect(updated?.name).toBe("Alice Updated");
+    });
+
+    test("should return null when no record found", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      const user = User.query().where("name", "=", "NonExistent").first();
+      expect(user).toBeNull();
+    });
+
+    test("should support save() to update all properties", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        email: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", email: "alice@old.com" });
+
+      const user = User.findById(1);
+      expect(user).not.toBeNull();
+      
+      // Modify properties and save
+      if (user) {
+        (user as unknown as Record<string, unknown>).name = "Alice Updated";
+        (user as unknown as Record<string, unknown>).email = "alice@new.com";
+        const savedCount = user.save();
+        expect(savedCount).toBe(1);
+      }
+      
+      const updated = User.findById(1);
+      expect(updated?.name).toBe("Alice Updated");
+      expect(updated?.email).toBe("alice@new.com");
+    });
+
+    test("should support refresh() to reload from database", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const user = User.findById(1);
+      expect(user?.name).toBe("Alice");
+      
+      // Update from another reference
+      User.update({ id: 1 }, { name: "Alice Updated" });
+      
+      // Refresh to get latest
+      const refreshed = user?.refresh();
+      expect(refreshed?.name).toBe("Alice Updated");
+    });
+
+    test("should support exists() to check if result exists", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const user = User.findById(1);
+      expect(user?.exists()).toBe(true);
+    });
+
+    test("should support toJSON() to get underlying data", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const user = User.findById(1);
+      const json = user?.toJSON();
+      
+      expect(json).toEqual({ id: 1, name: "Alice" });
+    });
+
+    test("should support the exact pattern from the issue", () => {
+      // Model.query()
+      //   .where("active", "=", active ? 1 : 0)
+      //   .first().delete();
+      
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        active: { type: "INTEGER" },
+      });
+
+      User.insert({ name: "Alice", active: 1 });
+      User.insert({ name: "Bob", active: 0 });
+      User.insert({ name: "Charlie", active: 1 });
+
+      const active = false;
+      const user = User.query()
+        .where("active", "=", active ? 1 : 0)
+        .first();
+      
+      expect(user).not.toBeNull();
+      user?.delete();
+      
+      // Verify Bob was deleted
+      expect(User.count()).toBe(2);
+      expect(User.find({ name: "Bob" }).first()).toBeNull();
+    });
+  });
+
+  describe("Raw SQL query support", () => {
+    test("should support query() with raw SQL string", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active" });
+      User.insert({ name: "Bob", status: "inactive" });
+      User.insert({ name: "Charlie", status: "active" });
+
+      // Use raw SQL
+      const results = User.query("SELECT * FROM user WHERE status = 'active'").all();
+      
+      expect(results).toHaveLength(2);
+      expect(results.map(u => u.name).sort()).toEqual(["Alice", "Charlie"]);
+    });
+
+    test("should support query() with raw SQL and parameters", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+        status: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice", status: "active" });
+      User.insert({ name: "Bob", status: "inactive" });
+
+      // Use raw SQL with parameters
+      const results = User.query("SELECT * FROM user WHERE status = ?", ["active"]).all();
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Alice");
+    });
+
+    test("should support raw SQL with first()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const user = User.query("SELECT * FROM user ORDER BY name ASC").first();
+      
+      expect(user).not.toBeNull();
+      expect(user?.name).toBe("Alice");
+    });
+
+    test("should support raw SQL with first().delete()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const user = User.query("SELECT * FROM user WHERE name = ?", ["Alice"]).first();
+      expect(user).not.toBeNull();
+      
+      user?.delete();
+      
+      expect(User.count()).toBe(1);
+      expect(User.find({ name: "Alice" }).first()).toBeNull();
+    });
+
+    test("should support raw SQL with get() terminal method", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const results = User.query("SELECT * FROM user").get();
+      
+      expect(results).toHaveLength(1);
+    });
+
+    test("should support raw SQL with run() terminal method", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const results = User.query("SELECT * FROM user").run();
+      
+      expect(results).toHaveLength(1);
+    });
+
+    test("should support raw SQL with exists()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      expect(User.query("SELECT * FROM user WHERE name = ?", ["Alice"]).exists()).toBe(true);
+      expect(User.query("SELECT * FROM user WHERE name = ?", ["NonExistent"]).exists()).toBe(false);
+    });
+
+    test("should support raw SQL with count()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const count = User.query("SELECT * FROM user").count();
+      
+      expect(count).toBe(2);
+    });
+
+    test("should support raw SQL with pluck()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+      User.insert({ name: "Bob" });
+
+      const names = User.query("SELECT * FROM user ORDER BY name ASC").pluck("name");
+      
+      expect(names).toEqual(["Alice", "Bob"]);
+    });
+
+    test("should support raw SQL with toSQL()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      const { sql, params } = User.query("SELECT * FROM user WHERE id = ?", [1]).toSQL();
+      
+      expect(sql).toBe("SELECT * FROM user WHERE id = ?");
+      expect(params).toEqual([1]);
+    });
+
+    test("should support raw SQL with firstOrFail()", () => {
+      const User = ql.define("user", {
+        id: { type: "INTEGER", primary: true, autoIncrement: true },
+        name: { type: "TEXT" },
+      });
+
+      User.insert({ name: "Alice" });
+
+      const user = User.query("SELECT * FROM user WHERE name = ?", ["Alice"]).firstOrFail();
+      expect(user.name).toBe("Alice");
+
+      expect(() => {
+        User.query("SELECT * FROM user WHERE name = ?", ["NonExistent"]).firstOrFail();
+      }).toThrow();
+    });
+  });
 });

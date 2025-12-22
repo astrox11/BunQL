@@ -31,6 +31,16 @@
  * const all = User.find().all();
  * const byId = User.findById(1);
  * 
+ * // Chainable methods on results (methods that never end)
+ * const contact = User.query().where("id", "=", 1).first();
+ * contact?.delete(); // Delete the record
+ * contact?.update({ username: "new_name" }); // Update the record
+ * contact?.username; // Access property
+ * 
+ * // Raw SQL queries
+ * const results = User.query("SELECT * FROM user WHERE status = 'active'");
+ * const paramResults = User.query("SELECT * FROM user WHERE id = ?", [1]);
+ * 
  * // Update (immediate execution)
  * User.update({ email: "a@mail.com" }, { username: "alice_updated" });
  * 
@@ -48,9 +58,11 @@
 export { BunQL } from "./bunql";
 export { Model } from "./model";
 export { QueryBuilder } from "./query-builder";
+export { RawQueryBuilder } from "./raw-query-builder";
 export { DeleteBuilder } from "./delete-builder";
 export { UpdateBuilder } from "./update-builder";
 export { InsertBuilder } from "./insert-builder";
+export { ResultProxy, createResultProxy } from "./result-proxy";
 export type { ConflictResolution } from "./insert-builder";
 
 export type {
