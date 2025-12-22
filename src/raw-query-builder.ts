@@ -5,6 +5,16 @@ import { createResultProxy, ResultProxy } from "./result-proxy";
 /**
  * RawQueryBuilder<T> - Executes raw SQL queries and returns results with chainable methods
  * Used when passing a raw SQL string to Model.query()
+ * 
+ * @warning This class executes raw SQL queries. Always use parameterized queries
+ * with the second argument to prevent SQL injection:
+ * ```typescript
+ * // Safe - using parameters
+ * User.query("SELECT * FROM user WHERE id = ?", [userId])
+ * 
+ * // UNSAFE - string interpolation is vulnerable to SQL injection
+ * User.query(`SELECT * FROM user WHERE id = ${userId}`) // DON'T DO THIS
+ * ```
  */
 export class RawQueryBuilder<T extends Record<string, unknown>> {
   private db: Database;
@@ -79,7 +89,9 @@ export class RawQueryBuilder<T extends Record<string, unknown>> {
   firstOrFail(): T & ResultProxy<T> {
     const result = this.first();
     if (result === null) {
-      throw new Error(`No record found for raw query`);
+      // Truncate SQL for error message if it's too long
+      const sqlPreview = this.rawSql.length > 100 ? this.rawSql.substring(0, 100) + "..." : this.rawSql;
+      throw new Error(`No record found for query: ${sqlPreview}`);
     }
     return result;
   }
