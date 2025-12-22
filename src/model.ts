@@ -8,10 +8,12 @@ import type {
   WhereCondition,
 } from "./types";
 import { QueryBuilder } from "./query-builder";
+import { RawQueryBuilder } from "./raw-query-builder";
 import { DeleteBuilder } from "./delete-builder";
 import { UpdateBuilder } from "./update-builder";
 import { InsertBuilder } from "./insert-builder";
 import { buildWhereClause } from "./where-builder";
+import { createResultProxy, ResultProxy } from "./result-proxy";
 
 /**
  * Model<T> - Represents a database table with typed CRUD operations
@@ -65,7 +67,8 @@ export class Model<S extends SchemaDefinition> {
       this.db,
       this.tableName,
       this.statementCache,
-      where
+      where,
+      this.primaryKey
     );
   }
 
@@ -82,39 +85,73 @@ export class Model<S extends SchemaDefinition> {
       this.db,
       this.tableName,
       this.statementCache,
-      where
+      where,
+      this.primaryKey
     );
   }
 
   /**
-   * Create a QueryBuilder for SELECT queries with fluent chaining
+   * Create a QueryBuilder for SELECT queries with fluent chaining, or execute raw SQL
    * Alias for select() method, providing a more intuitive API for querying
+   * @overload query(where) - Create a QueryBuilder with optional initial WHERE conditions
+   * @overload query(rawSql) - Execute raw SQL query and return results
+   * @overload query(rawSql, params) - Execute raw SQL query with parameters
    * @example
+   * // QueryBuilder pattern
    * const contact = Contact.query().where("lid", "=", lid).first();
    * const users = User.query().where("status", "=", "active").all();
+   * 
+   * // Raw SQL pattern
+   * const results = User.query("SELECT * FROM user WHERE status = 'active'");
+   * const paramResults = User.query("SELECT * FROM user WHERE id = ?", [1]);
    */
+  query(rawSql: string, params?: SQLQueryBindings[]): RawQueryBuilder<InferSchemaType<S>>;
+  query(where?: WhereCondition<InferSchemaType<S>>): QueryBuilder<InferSchemaType<S>>;
   query(
-    where?: WhereCondition<InferSchemaType<S>>
-  ): QueryBuilder<InferSchemaType<S>> {
+    whereOrRawSql?: WhereCondition<InferSchemaType<S>> | string,
+    params?: SQLQueryBindings[]
+  ): QueryBuilder<InferSchemaType<S>> | RawQueryBuilder<InferSchemaType<S>> {
+    // If a string is passed, treat it as raw SQL
+    if (typeof whereOrRawSql === "string") {
+      return new RawQueryBuilder<InferSchemaType<S>>(
+        this.db,
+        this.tableName,
+        this.statementCache,
+        this.primaryKey,
+        whereOrRawSql,
+        params
+      );
+    }
+    
+    // Otherwise, create a QueryBuilder
     return new QueryBuilder<InferSchemaType<S>>(
       this.db,
       this.tableName,
       this.statementCache,
-      where
+      whereOrRawSql,
+      this.primaryKey
     );
   }
 
   /**
    * Find a record by its primary key
+   * Returns a result with chainable methods like delete(), update(), save()
    */
-  findById(id: number | string): InferSchemaType<S> | null {
+  findById(id: number | string): (InferSchemaType<S> & ResultProxy<InferSchemaType<S>>) | null {
     if (!this.primaryKey) {
       throw new Error(`No primary key defined for table "${this.tableName}"`);
     }
 
     const sql = `SELECT * FROM "${this.tableName}" WHERE "${this.primaryKey}" = ?`;
     const stmt = this.getStatement(sql);
-    return (stmt.get(id) as InferSchemaType<S>) || null;
+    const data = (stmt.get(id) as InferSchemaType<S>) || null;
+    return createResultProxy<InferSchemaType<S>>(
+      this.db,
+      this.tableName,
+      this.statementCache,
+      this.primaryKey,
+      data
+    );
   }
 
   /**
@@ -392,8 +429,9 @@ export class Model<S extends SchemaDefinition> {
 
   /**
    * Find a record by primary key or throw an error
+   * Returns a result with chainable methods like delete(), update(), save()
    */
-  findByIdOrFail(id: number | string): InferSchemaType<S> {
+  findByIdOrFail(id: number | string): InferSchemaType<S> & ResultProxy<InferSchemaType<S>> {
     const result = this.findById(id);
     if (result === null) {
       throw new Error(`Record with id "${id}" not found in table "${this.tableName}"`);
